@@ -162,45 +162,82 @@ app.post('/sync-data', verifyToken,  async (req, res) => {
     }
 });
 
-app.post('/login', (req, res) => {
-    // let userID=req,body
-        // สร้าง Token
-        const user = {
+// เพิ่ม API endpoint สำหรับดึงข้อมูลผู้ใช้
+app.get('/api/user-info', verifyToken, async (req, res) => {
+    try {
+        // ดึงข้อมูลจาก API ที่ port 3004
+        const response = await axios.get('http://localhost:3004/api/data');
         
-            // emp_id: "498145",
-            // first_name: "ศักดิ์",
-            // last_name: "ทวีสุข",
-            // dept_change_code: "530105002000301",
-            // dept_full: "แผนกพัฒนาระบบงานด้านการเงิน"
-            //  role: "Admin",
-
-                  emp_id: 498143,
-                  first_name: "ปรวรรธน์",
-                  last_name: "จรรยาเพศ",
-                  dept_change_code: "530105002000300",
-                  dept_full: "แผนกพัฒนาระบบงานด้านทรัพยากรบุคคล",
-            app_version: "v1.0"
-    
-            
-        };
-    
-        const token = jwt.sign(user, SECRET_KEY, { expiresIn: '1d' }); // Token มีอายุ 1 วัน
-
-        // ส่งเฉพาะข้อความและ Token กลับไป
-        res.json({
- 
-            message: "เข้าสู่ระบบสำเร็จ",
-            token: token
+        if (response.data?.data?.dataDetail?.length > 0) {
+            const user = response.data.data.dataDetail[0];
+            res.json({
+                name: `${user.title_s_desc || ""}${user.first_name} ${user.last_name}`,
+                role: user.dept_full || "ไม่ระบุแผนก",
+                emp_id: user.emp_id
+            });
+        } else {
+            res.status(404).json({ 
+                message: "ไม่พบข้อมูลผู้ใช้งาน",
+                name: "ไม่พบชื่อผู้ใช้งาน",
+                role: "ไม่พบแผนก"
+            });
+        }
+    } catch (error) {
+        console.error('เกิดข้อผิดพลาดในการดึงข้อมูลผู้ใช้:', error);
+        res.status(500).json({ 
+            message: "เกิดข้อผิดพลาดในการดึงข้อมูล",
+            name: "ไม่สามารถดึงข้อมูลได้",
+            role: "ไม่สามารถดึงข้อมูลได้"
         });
+    }
+});
+
+// เพิ่มฟังก์ชันสำหรับกำหนดสิทธิ์ตามแผนก
+const getDepartmentRole = (deptCode) => {
+    const deptRoles = {
+        // แผนกพัฒนาระบบงานด้านทรัพยากรบุคคล
+        "530105002000300": "Admin",
+        // แผนกพัฒนาระบบงานด้านการเงิน
+        "530105002000301": "User",
+        // แผนกพัฒนาระบบงานด้านบัญชี
+        "530105002000302": "User",
+        // แผนกพัฒนาระบบงานด้านจัดซื้อ
+        "530105002000303": "Superadmin",
+        // ค่าเริ่มต้นสำหรับแผนกอื่นๆ
+        "default": "User"
+    };
+    return deptRoles[deptCode] || deptRoles.default;
+};
+
+// API สำหรับการเข้าสู่ระบบและสร้าง Token
+app.post('/login', (req, res) => {
+    const user = {
+        emp_id: 498143,
+        first_name: "ปรวรรธน์",
+        last_name: "จรรยาเพศ",
+        dept_change_code: "530105002000300",
+        dept_full: "แผนกพัฒนาระบบงานด้านทรัพยากรบุคคล",
+        app_version: "v1.0",
+        role: getDepartmentRole("530105002000300") // กำหนดสิทธิ์ตามแผนก
+    };
+
+    const token = jwt.sign(user, SECRET_KEY, { expiresIn: '1d' });
+
+    res.json({
+        message: "เข้าสู่ระบบสำเร็จ",
+        token: token,
+        user: {
+            name: `${user.first_name} ${user.last_name}`,
+            role: user.role,
+            dept_full: user.dept_full,
+            emp_id: user.emp_id
+        }
     });
+});
 
 // API สำหรับการเข้าสู่ระบบและสร้าง Token
 app.post('/loginto', (req, res) => {
     const { emp_id } = req.body;
-
-    // if (!emp_id) {
-    //     return res.status(400).json({ message: "กรุณาใส่ emp_id" });
-    // }
 
     const query = `SELECT * FROM employees WHERE emp_id = ?`;
     db.query(query, [emp_id], (err, result) => {
@@ -213,22 +250,30 @@ app.post('/loginto', (req, res) => {
             return res.status(404).json({ message: "ไม่พบข้อมูลผู้ใช้" });
         }
 
-        const user = result[0]; // ดึงข้อมูลผู้ใช้จากฐานข้อมูล
+        const user = result[0];
+        const role = getDepartmentRole(user.dept_change_code);
+
         const token = jwt.sign(
             {
                 emp_id: user.emp_id,
                 first_name: user.first_name,
                 last_name: user.last_name,
                 dept_full: user.dept_full,
-                role: user.role // ฝังบทบาทลงใน Token
+                role: role // ใช้สิทธิ์ที่กำหนดตามแผนก
             },
             SECRET_KEY,
-            { expiresIn: '1d' } // Token มีอายุ 1 วัน
+            { expiresIn: '1d' }
         );
 
         res.json({
             message: "เข้าสู่ระบบสำเร็จ",
-            token: token
+            token: token,
+            user: {
+                name: `${user.first_name} ${user.last_name}`,
+                role: role,
+                dept_full: user.dept_full,
+                emp_id: user.emp_id
+            }
         });
     });
 });

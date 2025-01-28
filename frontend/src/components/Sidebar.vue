@@ -125,6 +125,8 @@
 </template>
 
 <script>
+import axios from "axios";
+
 export default {
   name: "AppSidebar",
   data() {
@@ -137,91 +139,68 @@ export default {
         activityMenu: false,
       },
       userData: {
-        name: 'ผู้ใช้งานระบบ',  // ค่าเริ่มต้น
-        role: 'ผู้ใช้ทั่วไป'    // ค่าเริ่มต้น
+        fullName: "",
+        department: "",
+        empId: null,
       },
-      menuItems: [
-        {
-          title: 'หน้าหลัก',
-          icon: 'fas fa-home',
-          path: '/'
-        },
-        {
-          title: 'จัดการข้อมูล',
-          icon: 'fas fa-database',
-          path: '/data'
-        },
-        {
-          title: 'บันทึกข้อมูล',
-          icon: 'fas fa-edit',
-          path: '/system-details'
-        },
-        {
-          title: 'กิจกรรม',
-          icon: 'fas fa-calendar-alt',
-          path: '/activities'
-        }
-      ]
     };
+  },
+  async created() {
+    try {
+      const response = await axios.get("http://localhost:3004/api/data", {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+      });
+
+      if (response.data?.data?.dataDetail?.length > 0) {
+        const user = response.data.data.dataDetail[0];
+        if (user.emp_id) {
+          this.userData = {
+            fullName: `${user.title_s_desc || ""}${user.first_name} ${user.last_name}`,
+            department: user.dept_full || "ไม่ระบุแผนก",
+            empId: user.emp_id,
+          };
+        }
+      } else {
+        console.warn("ไม่พบข้อมูลผู้ใช้งานหรือข้อมูลว่าง");
+      }
+    } catch (error) {
+      if (error.response?.status === 401) {
+        console.error("Token หมดอายุ กรุณาเข้าสู่ระบบใหม่");
+        this.$router.push("/login");
+      } else {
+        console.error("เกิดข้อผิดพลาด:", error.response?.data || error.message);
+      }
+    }
+  },
+  computed: {
+    fullName() {
+      return this.userData.empId ? this.userData.fullName : "ไม่พบชื่อผู้ใช้งาน";
+    },
+    department() {
+      return this.userData.empId ? this.userData.department : "ไม่พบแผนก";
+    },
   },
   methods: {
     toggleSidebar() {
       this.sidebarOpen = !this.sidebarOpen;
     },
     toggleSubMenu(menu) {
+      Object.keys(this.subMenus).forEach((key) => {
+        if (key !== menu) this.subMenus[key] = false;
+      });
       this.subMenus[menu] = !this.subMenus[menu];
     },
     handleLogout() {
-      // จัดการ logout
-      if (window.confirm('คุณต้องการออกจากระบบใช่หรือไม่?')) {
-        // ทำการ logout
-        this.$router.push('/login');
+      if (confirm("ต้องการออกจากระบบใช่หรือไม่?")) {
+        localStorage.removeItem("token");
+        this.$router.push("/login").catch((err) =>
+          console.error("Error navigating to login:", err)
+        );
       }
     },
-    async fetchUserData() {
-      try {
-        const response = await fetch('http://localhost:8088/api/user-info', {
-          method: 'GET',
-          credentials: 'include',
-          headers: {
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'Origin': 'http://localhost:8080'
-          }
-        });
-        
-        if (!response.ok) {
-          throw new Error('ไม่สามารถดึงข้อมูลผู้ใช้ได้');
-        }
-        
-        const data = await response.json();
-        if (data) {
-          this.userData = {
-            name: data.name || 'ผู้ใช้งานระบบ',
-            role: data.role || 'ผู้ใช้ทั่วไป'
-          };
-        }
-      } catch (error) {
-        console.error('Error fetching user data:', error);
-        // ใช้ค่าเริ่มต้นถ้าไม่สามารถดึงข้อมูลได้
-        this.userData = {
-          name: 'ผู้ใช้งานระบบ',
-          role: 'ผู้ใช้ทั่วไป'
-        };
-      }
-    }
   },
-  computed: {
-    fullName() {
-      return this.userData.name;
-    },
-    department() {
-      return this.userData.role;
-    }
-  },
-  async created() {
-    await this.fetchUserData();
-  }
 };
 </script>
 
