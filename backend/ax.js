@@ -2,7 +2,7 @@
 
 // const axios = require('axios');
 
-// axios.get('http://localhost:3003/api/data')
+// axios.get('http://localhost:3004/api/data')
 //   .then(response => {
 //     // ตรวจสอบว่ามีข้อมูลใน response หรือไม่
 //     if (!response.data || !response.data.data || !response.data.data.dataDetail) {
