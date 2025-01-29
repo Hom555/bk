@@ -222,15 +222,18 @@ export default {
       importantInfoList: [],
       selectedSystemId: "",
       selectedImportantInfoId: "",
+      allActivities: [],
       activities: [],
+      searchQuery: "",
+      deptInfo: null,
+      loading: false,
+      toastShown: false,
       editingId: null,
       editedDetails: "",
       newFiles: [],
       newImages: [],
       removedFiles: [],
-      removedImages: [],
-      loading: false,
-      toastShown: false
+      removedImages: []
     };
   },
   methods: {
@@ -243,72 +246,82 @@ export default {
         }, 3000);
       }
     },
+    async fetchDeptInfo() {
+      try {
+        const response = await axios.get("http://localhost:3004/api/data");
+        const employeeData = response.data?.data?.dataDetail[0];
+        if (employeeData) {
+          this.deptInfo = {
+            dept_change_code: employeeData.dept_change_code,
+            dept_full: employeeData.dept_full
+          };
+          console.log('Department Info:', this.deptInfo);
+          await this.fetchSystems();
+        } else {
+          throw new Error("ไม่พบข้อมูลแผนก");
+        }
+      } catch (error) {
+        console.error("Error fetching department info:", error);
+        this.toast.error("ไม่สามารถดึงข้อมูลแผนกได้");
+      }
+    },
+
     async fetchSystems() {
       try {
-        this.loading = true;
         const response = await axios.get("http://localhost:8088/api/system-records");
-        console.log("Response from system-records:", response.data);
-        if (response.data) {
-          this.system = response.data;
+        if (this.deptInfo) {
+          this.system = response.data.filter(
+            system => system.dept_change_code === this.deptInfo.dept_change_code
+          );
+          console.log('Filtered Systems:', this.system);
         }
       } catch (error) {
         console.error("Error fetching systems:", error);
-        this.showToast("ไม่สามารถดึงข้อมูลระบบได้");
-      } finally {
-        this.loading = false;
+        this.toast.error("ไม่สามารถดึงข้อมูลระบบได้");
       }
     },
-    async fetchSystemDetails() {
-      if (!this.selectedSystemId) return;
 
-      try {
-        this.loading = true;
-        const response = await axios.get(`http://localhost:8088/api/system-details/${this.selectedSystemId}`);
-        console.log("Response from system-details:", response.data);
-        
-        if (response.data) {
-          this.importantInfoList = response.data;
-          if (this.importantInfoList.length === 0) {
-            this.showToast("ไม่พบข้อมูลสำคัญสำหรับระบบนี้", "warning");
-          }
-        } else {
-          this.importantInfoList = [];
-          this.showToast("ไม่พบข้อมูลสำคัญสำหรับระบบนี้", "warning");
-        }
-      } catch (error) {
-        console.error("Error fetching system details:", error);
-        this.showToast("ไม่สามารถดึงข้อมูลรายละเอียดได้");
-        this.importantInfoList = [];
-      } finally {
-        this.loading = false;
-      }
-    },
     async fetchActivities() {
-      if (!this.selectedSystemId || !this.selectedImportantInfoId) return;
-
       try {
-        this.loading = true;
-        console.log(`Fetching activities for system ${this.selectedSystemId} and info ${this.selectedImportantInfoId}`);
-        
-        const response = await axios.get(
-          `http://localhost:8088/api/activities/${this.selectedSystemId}/${this.selectedImportantInfoId}`
-        );
-        console.log("Response from activities:", response.data);
-
-        if (response.data) {
-          this.activities = response.data;
-          if (this.activities.length === 0) {
-            this.showToast("ไม่พบข้อมูลกิจกรรม", "info");
-          }
+        const response = await axios.get("http://localhost:8088/api/all-activities");
+        if (this.deptInfo) {
+          // เก็บข้อมูลทั้งหมดที่ผ่านการกรองแผนก
+          this.allActivities = response.data.filter(
+            activity => activity.dept_change_code === this.deptInfo.dept_change_code
+          );
+          this.filterActivities();
         }
       } catch (error) {
         console.error("Error fetching activities:", error);
-        this.showToast("ไม่สามารถดึงข้อมูลกิจกรรมได้");
-        this.activities = [];
-      } finally {
-        this.loading = false;
+        this.toast.error("ไม่สามารถดึงข้อมูลกิจกรรมได้");
       }
     },
+
+    filterActivities() {
+      let filteredActivities = [...this.allActivities];
+
+      if (this.selectedSystemId) {
+        filteredActivities = filteredActivities.filter(
+          activity => parseInt(activity.system_id) === parseInt(this.selectedSystemId)
+        );
+      }
+
+      if (this.selectedImportantInfoId) {
+        filteredActivities = filteredActivities.filter(
+          activity => parseInt(activity.important_info) === parseInt(this.selectedImportantInfoId)
+        );
+      }
+
+      if (this.searchQuery) {
+        const query = this.searchQuery.toLowerCase();
+        filteredActivities = filteredActivities.filter(activity =>
+          activity.details.toLowerCase().includes(query)
+        );
+      }
+
+      this.activities = filteredActivities;
+    },
+
     formatDate(dateString) {
       return new Date(dateString).toLocaleString("th-TH");
     },
@@ -321,7 +334,7 @@ export default {
       window.open(imageUrl, '_blank');
     },
     getSystemName(systemId) {
-      const system = this.system.find(s => s.id === systemId);
+      const system = this.system.find(s => s.id === parseInt(systemId));
       return system ? `${system.name_th}-${system.name_en}` : '';
     },
     getImportantInfo(infoId) {
@@ -352,18 +365,36 @@ export default {
         alert("ไม่สามารถแก้ไขข้อมูลได้");
       }
     },
-    async confirmDelete(activity) {
-      if (confirm("ต้องการลบรายการนี้ใช่หรือไม่?")) {
-        try {
-          await axios.delete(
-            `http://localhost:8088/api/activities/${activity.id}`
-          );
-          await this.fetchActivities();
-          alert("ลบข้อมูลสำเร็จ");
-        } catch (error) {
-          console.error("Error deleting activity:", error);
-          alert("ไม่สามารถลบข้อมูลได้");
+    async deleteActivity(activityId) {
+      try {
+        const activityToDelete = this.activities.find(activity => activity.id === activityId);
+        if (!activityToDelete) {
+          throw new Error("ไม่พบข้อมูลกิจกรรมที่ต้องการลบ");
         }
+
+        if (parseInt(activityToDelete.system_id) !== parseInt(this.selectedSystemId) || 
+            parseInt(activityToDelete.important_info) !== parseInt(this.selectedImportantInfoId)) {
+          throw new Error("ไม่สามารถลบกิจกรรมที่ไม่ตรงกับระบบหรือข้อมูลสำคัญที่เลือก");
+        }
+
+        const response = await axios.delete(
+          `http://localhost:8088/api/activities/${activityId}/${activityToDelete.system_id}/${activityToDelete.important_info}`
+        );
+        
+        if (response.data.success) {
+          this.toast.success("ลบข้อมูลสำเร็จ");
+          this.activities = this.activities.filter(activity => activity.id !== activityId);
+        } else {
+          throw new Error(response.data.message || "ไม่สามารถลบข้อมูลได้");
+        }
+      } catch (error) {
+        console.error("Error deleting activity:", error);
+        this.toast.error(error.message || "เกิดข้อผิดพลาดในการลบข้อมูล");
+      }
+    },
+    async confirmDelete(activity) {
+      if (confirm(`ต้องการลบกิจกรรม "${activity.details.substring(0, 50)}..." ใช่หรือไม่?`)) {
+        await this.deleteActivity(activity.id);
       }
     },
     async startEdit(activity) {
@@ -388,49 +419,66 @@ export default {
         timeout: 2000
       });
     },
-    async saveEdit(activity) {
-      if (!this.editedDetails.trim()) {
-        alert("กรุณากรอกรายละเอียด");
-        return;
-      }
-
+    async saveEdit() {
       try {
+        // ค้นหาข้อมูลที่ต้องการแก้ไขจาก activities ปัจจุบัน
+        const activityToEdit = this.activities.find(activity => activity.id === this.editingId);
+        if (!activityToEdit) {
+          throw new Error("ไม่พบข้อมูลกิจกรรมที่ต้องการแก้ไข");
+        }
+
         const formData = new FormData();
-        formData.append("details", this.editedDetails);
+        formData.append('details', this.editedDetails);
 
-        this.newFiles.forEach((file) => {
-          formData.append("files", file);
-        });
+        if (this.newFiles.length > 0) {
+          this.newFiles.forEach(file => {
+            formData.append('files', file);
+          });
+        }
 
-        this.newImages.forEach((image) => {
-          formData.append("images", image);
-        });
+        if (this.newImages.length > 0) {
+          this.newImages.forEach(image => {
+            formData.append('images', image);
+          });
+        }
 
-        formData.append("removedFiles", JSON.stringify(this.removedFiles));
-        formData.append("removedImages", JSON.stringify(this.removedImages));
+        formData.append('removedFiles', JSON.stringify(this.removedFiles));
+        formData.append('removedImages', JSON.stringify(this.removedImages));
 
         const response = await axios.put(
-          `http://localhost:8088/api/activities/${activity.id}`,
+          `http://localhost:8088/api/activities/${this.editingId}`,
           formData,
           {
             headers: {
-              "Content-Type": "multipart/form-data",
-            },
+              'Content-Type': 'multipart/form-data'
+            }
           }
         );
 
-        if (response.status === 200) {
-          this.toast.success("บันทึกการแก้ไขสำเร็จ", {
-            timeout: 3000
-          });
-          await this.fetchActivities();
+        if (response.data.success) {
+          // อัพเดทเฉพาะข้อมูลที่กำลังแก้ไข
+          const updatedActivity = {
+            ...activityToEdit,
+            details: this.editedDetails,
+            file_paths: response.data.file_paths,
+            image_paths: response.data.image_paths,
+            updated_at: new Date().toISOString()
+          };
+
+          // อัพเดทเฉพาะในรายการที่กำลังแสดง
+          const index = this.activities.findIndex(activity => activity.id === this.editingId);
+          if (index !== -1) {
+            this.activities.splice(index, 1, updatedActivity);
+          }
+
+          this.toast.success("บันทึกการแก้ไขสำเร็จ");
           this.cancelEdit();
+        } else {
+          throw new Error(response.data.message || "ไม่สามารถบันทึกการแก้ไขได้");
         }
       } catch (error) {
         console.error("Error saving edit:", error);
-        this.toast.error("ไม่สามารถบันทึกการแก้ไขได้", {
-          timeout: 3000
-        });
+        this.toast.error(error.message || "ไม่สามารถบันทึกการแก้ไขได้");
       }
     },
     handleFileChange(event) {
@@ -483,38 +531,59 @@ export default {
     getImagePreview(file) {
       return URL.createObjectURL(file);
     },
-  },
-  watch: {
-    selectedSystemId(newVal) {
-      this.toastShown = false;
-      if (newVal) {
-        this.selectedImportantInfoId = "";
-        this.activities = [];
-        this.fetchSystemDetails();
-      } else {
+    async fetchSystemDetails() {
+      if (!this.selectedSystemId) {
         this.importantInfoList = [];
-        this.activities = [];
+        return;
+      }
+
+      try {
+        const response = await axios.get(`http://localhost:8088/api/system-details/${this.selectedSystemId}`);
+        if (this.deptInfo) {
+          this.importantInfoList = response.data
+            .filter(detail => detail.dept_change_code === this.deptInfo.dept_change_code)
+            .map(detail => ({
+              id: detail.id,
+              important_info: detail.important_info
+            }));
+        }
+      } catch (error) {
+        console.error("Error:", error);
+        this.toast.error("ไม่สามารถดึงข้อมูลสำคัญได้");
       }
     },
-    selectedImportantInfoId(newVal) {
-      this.toastShown = false;
-      if (newVal) {
+  },
+  watch: {
+    selectedSystemId() {
+      this.selectedImportantInfoId = "";
+      this.importantInfoList = [];
+      if (this.selectedSystemId) {
+        this.fetchSystemDetails();
         this.fetchActivities();
-      } else {
-        this.activities = [];
       }
+    },
+    selectedImportantInfoId() {
+      if (this.selectedImportantInfoId !== "") {
+        console.log('Selected important info changed:', this.selectedImportantInfoId);
+        this.fetchActivities();
+      }
+    },
+    searchQuery() {
+      this.fetchActivities();
     }
   },
   async mounted() {
-    await this.fetchSystems();
-    
-    // ถ้ามี query parameters ให้เลือกระบบและข้อมูลสำคัญตาม URL
-    const { systemId, importantInfoId } = this.$route.query;
-    if (systemId) {
-      this.selectedSystemId = systemId;
-      if (importantInfoId) {
-        this.selectedImportantInfoId = importantInfoId;
+    try {
+      this.loading = true;
+      await this.fetchDeptInfo();
+      if (this.selectedSystemId) {
+        await this.fetchSystemDetails();
       }
+      this.loading = false;
+    } catch (error) {
+      console.error("Error in mounted:", error);
+      this.toast.error("เกิดข้อผิดพลาดในการโหลดข้อมูล");
+      this.loading = false;
     }
   },
 };

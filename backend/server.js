@@ -197,13 +197,22 @@ app.put('/api/system-record/:id', async (req, res) => {
 });
 
 app.get('/api/system-records', async (req, res) => {
-  const query = 'SELECT * FROM system_master'; //Where รหัสแผนก 
   try {
-    const [rows] = await db.query(query);
-    console.log('Fetched system records:', rows);
-    res.status(200).json(rows);
+    const [systems] = await db.query(`
+      SELECT 
+        id,
+        name_th,
+        name_en,
+        dept_change_code,
+        dept_full,
+        created_at,
+        updated_at
+      FROM system_master
+      ORDER BY created_at DESC
+    `);
+    res.json(systems);
   } catch (error) {
-    console.error('Error fetching system records:', error);
+    console.error('Error fetching systems:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -340,11 +349,19 @@ app.delete('/api/system-details/:id', async (req, res) => {
   }
 });
 
-//กิจกรรม
+// กิจกรรม
 app.post("/api/activities", upload.fields([{ name: "files" }, { name: "images" }]), async (req, res) => {
   const { systemId, importantInfo, details } = req.body;
 
   try {
+    // ตรวจสอบข้อมูลที่จำเป็น
+    if (!systemId || !importantInfo || !details) {
+      return res.status(400).json({ 
+        success: false,
+        message: "กรุณากรอกข้อมูลให้ครบถ้วน" 
+      });
+    }
+
     // เก็บไฟล์แนบและรูปภาพ
     const filePaths = req.files?.["files"]
       ? req.files["files"].map((file) => `/uploads/${file.filename}`)
@@ -353,17 +370,34 @@ app.post("/api/activities", upload.fields([{ name: "files" }, { name: "images" }
       ? req.files["images"].map((file) => `/uploads/${file.filename}`)
       : [];
 
+    // ดึงข้อมูลแผนกจากระบบ
+    const [system] = await db.query(
+      'SELECT dept_change_code, dept_full FROM system_master WHERE id = ?',
+      [systemId]
+    );
+
+    if (system.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ไม่พบข้อมูลระบบ"
+      });
+    }
+
     // บันทึกข้อมูลลงฐานข้อมูล
     const query = `
-      INSERT INTO activities (system_id, important_info, details, file_paths, image_paths, created_at)
-      VALUES (?, ?, ?, ?, ?, NOW())
+      INSERT INTO activities 
+      (system_id, important_info, details, file_paths, image_paths, dept_change_code, dept_full) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
+
     const [result] = await db.execute(query, [
       systemId,
       importantInfo,
       details,
-      filePaths.join(","),
-      imagePaths.join(","),
+      filePaths.join(",") || "",
+      imagePaths.join(",") || "",
+      system[0].dept_change_code,
+      system[0].dept_full
     ]);
 
     res.status(200).json({ 
@@ -374,60 +408,50 @@ app.post("/api/activities", upload.fields([{ name: "files" }, { name: "images" }
   } catch (error) {
     console.error("Error saving activity:", error);
     res.status(500).json({ 
-      success: false,
+      success: false, 
       message: "ไม่สามารถบันทึกกิจกรรมได้",
       error: error.message 
     });
   }
 });
 
-// API endpoint สำหรับดึงข้อมูลกิจกรรม
-app.get('/api/activities/:systemId/:importantInfoId', async (req, res) => {
-  try {
-    const { systemId, importantInfoId } = req.params;
-    const [activities] = await db.query(`
-      SELECT 
-        id,
-        system_id,
-        important_info,
-        details,
-        file_paths,
-        image_paths,
-        created_at
-      FROM activities 
-      WHERE system_id = ? AND important_info = ?
-      ORDER BY created_at DESC
-    `, [systemId, importantInfoId]);
-
-    res.json(activities);
-  } catch (error) {
-    console.error('Error fetching activities:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// เพิ่ม endpoint สำหรับดึงข้อมูลกิจกรรมทั้งหมด
+// แก้ไข API สำหรับดึงข้อมูลกิจกรรมทั้งหมด
 app.get('/api/all-activities', async (req, res) => {
   try {
     const [activities] = await db.query(`
       SELECT 
-        sa.id,
-        sa.system_id,
-        sa.important_info,
-        sa.details,
-        sa.file_paths,
-        sa.image_paths,
-        sa.created_at,
+        a.*,
         sm.name_th as system_name,
-        sd.important_info as info_name
-      FROM system_activities sa
-      LEFT JOIN system_master sm ON sa.system_id = sm.id
-      LEFT JOIN system_details sd ON sa.important_info = sd.id
-      ORDER BY sa.created_at DESC
+        sm.name_en as system_name_en,
+        sm.dept_change_code,
+        sm.dept_full
+      FROM activities a
+      LEFT JOIN system_master sm ON a.system_id = sm.id
+      ORDER BY a.created_at DESC
     `);
     res.json(activities);
   } catch (error) {
     console.error('Error fetching all activities:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// แก้ไข API สำหรับดึงข้อมูลกิจกรรมตามระบบและข้อมูลสำคัญ
+app.get('/api/activities/:systemId/:importantInfo', async (req, res) => {
+  const { systemId, importantInfo } = req.params;
+  
+  try {
+    const [activities] = await db.query(`
+      SELECT a.*, sm.dept_change_code, sm.dept_full
+      FROM activities a
+      LEFT JOIN system_master sm ON a.system_id = sm.id
+      WHERE a.system_id = ? AND a.important_info = ?
+      ORDER BY a.created_at DESC
+    `, [systemId, importantInfo]);
+
+    res.json(activities);
+  } catch (error) {
+    console.error('Error fetching activities:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -548,56 +572,133 @@ app.get('/api/activities/current-month', async (req, res) => {
 app.put('/api/activities/:id', upload.fields([{ name: 'files' }, { name: 'images' }]), async (req, res) => {
   const { id } = req.params;
   const { details, removedFiles, removedImages } = req.body;
-  const files = req.files['files'] || [];
-  const images = req.files['images'] || [];
+  const files = req.files?.['files'] || [];
+  const images = req.files?.['images'] || [];
 
   try {
-    // Fetch existing activity
-    const [existingActivity] = await db.query('SELECT * FROM activities WHERE id = ?', [id]);
-    if (existingActivity.length === 0) {
-      return res.status(404).json({ message: 'Activity not found' });
+    // ตรวจสอบว่ามีกิจกรรมนี้อยู่จริงหรือไม่
+    const [existingActivity] = await db.query(
+      'SELECT * FROM activities WHERE id = ? LIMIT 1',
+      [id]
+    );
+    
+    if (!existingActivity || existingActivity.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "ไม่พบข้อมูลกิจกรรมที่ต้องการแก้ไข"
+      });
     }
 
-    // Remove files and images
-    const existingFiles = existingActivity[0].file_paths ? existingActivity[0].file_paths.split(',') : [];
-    const existingImages = existingActivity[0].image_paths ? existingActivity[0].image_paths.split(',') : [];
+    // จัดการไฟล์และรูปภาพที่ต้องการลบ
+    let currentFiles = existingActivity[0].file_paths ? existingActivity[0].file_paths.split(',') : [];
+    let currentImages = existingActivity[0].image_paths ? existingActivity[0].image_paths.split(',') : [];
 
-    const updatedFiles = existingFiles.filter(file => !removedFiles.includes(file));
-    const updatedImages = existingImages.filter(image => !removedImages.includes(image));
+    if (removedFiles) {
+      const filesToRemove = JSON.parse(removedFiles);
+      currentFiles = currentFiles.filter(file => !filesToRemove.includes(file));
+    }
 
-    // Add new files and images
-    const newFiles = files.map(file => `/uploads/${file.filename}`);
-    const newImages = images.map(image => `/uploads/${image.filename}`);
+    if (removedImages) {
+      const imagesToRemove = JSON.parse(removedImages);
+      currentImages = currentImages.filter(image => !imagesToRemove.includes(image));
+    }
 
-    const allFiles = [...updatedFiles, ...newFiles];
-    const allImages = [...updatedImages, ...newImages];
+    // เพิ่มไฟล์และรูปภาพใหม่
+    const newFilePaths = files.map(file => `/uploads/${file.filename}`);
+    const newImagePaths = images.map(image => `/uploads/${image.filename}`);
 
-    // Update activity
-    await db.query(
-      'UPDATE activities SET details = ?, file_paths = ?, image_paths = ? WHERE id = ?',
-      [details, allFiles.join(','), allImages.join(','), id]
+    // รวมไฟล์และรูปภาพทั้งหมด
+    const updatedFilePaths = [...currentFiles, ...newFilePaths].filter(Boolean).join(',');
+    const updatedImagePaths = [...currentImages, ...newImagePaths].filter(Boolean).join(',');
+
+    // อัพเดทข้อมูลในฐานข้อมูลเฉพาะรายการที่เลือก
+    const [result] = await db.query(
+      'UPDATE activities SET details = ?, file_paths = ?, image_paths = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? LIMIT 1',
+      [details, updatedFilePaths, updatedImagePaths, id]
     );
 
-    res.json({ message: 'Activity updated successfully' });
+    if (result.affectedRows > 0) {
+      res.json({
+        success: true,
+        message: "แก้ไขข้อมูลสำเร็จ",
+        file_paths: updatedFilePaths,
+        image_paths: updatedImagePaths
+      });
+    } else {
+      throw new Error("ไม่สามารถแก้ไขข้อมูลได้");
+    }
+
   } catch (error) {
     console.error('Error updating activity:', error);
-    res.status(500).json({ error: 'Failed to update activity' });
+    res.status(500).json({
+      success: false,
+      message: "เกิดข้อผิดพลาดในการแก้ไขข้อมูล",
+      error: error.message
+    });
   }
 });
 
-
-app.delete('/api/activities/:id', async (req, res) => {
-  const { id } = req.params;
+// เพิ่ม endpoint สำหรับลบกิจกรรม
+app.delete('/api/activities/:id/:systemId/:importantInfo', async (req, res) => {
+  const { id, systemId, importantInfo } = req.params;
 
   try {
-    const [result] = await db.query('DELETE FROM activities WHERE id = ?', [id]);
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ message: 'Activity not found' });
+    // ตรวจสอบว่ามีกิจกรรมนี้อยู่จริงหรือไม่
+    const [activity] = await db.query(
+      'SELECT * FROM activities WHERE id = ? AND system_id = ? AND important_info = ?',
+      [id, systemId, importantInfo]
+    );
+    
+    if (!activity || activity.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "ไม่พบข้อมูลกิจกรรมที่ต้องการลบ"
+      });
     }
-    res.json({ message: 'Activity deleted successfully' });
+
+    // ลบไฟล์ที่เกี่ยวข้อง
+    if (activity[0].file_paths) {
+      const filePaths = activity[0].file_paths.split(',');
+      filePaths.forEach(filePath => {
+        const fullPath = path.join(__dirname, '..', filePath.trim());
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+        }
+      });
+    }
+
+    if (activity[0].image_paths) {
+      const imagePaths = activity[0].image_paths.split(',');
+      imagePaths.forEach(imagePath => {
+        const fullPath = path.join(__dirname, '..', imagePath.trim());
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+        }
+      });
+    }
+
+    // ลบข้อมูลในฐานข้อมูลเฉพาะรายการที่เลือก
+    const [result] = await db.query(
+      'DELETE FROM activities WHERE id = ? AND system_id = ? AND important_info = ? LIMIT 1',
+      [id, systemId, importantInfo]
+    );
+
+    if (result.affectedRows > 0) {
+      res.json({
+        success: true,
+        message: "ลบข้อมูลสำเร็จ"
+      });
+    } else {
+      throw new Error("ไม่สามารถลบข้อมูลได้");
+    }
+
   } catch (error) {
     console.error('Error deleting activity:', error);
-    res.status(500).json({ error: 'Failed to delete activity' });
+    res.status(500).json({
+      success: false,
+      message: "เกิดข้อผิดพลาดในการลบข้อมูล",
+      error: error.message
+    });
   }
 });
 

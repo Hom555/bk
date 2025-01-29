@@ -144,6 +144,7 @@ export default {
       selectedSystemId: "",
       systemDetails: [],
       searchQuery: "",
+      deptInfo: null,
     };
   },
   computed: {
@@ -161,31 +162,46 @@ export default {
     },
   },
   methods: {
+    async fetchDeptInfo() {
+      try {
+        const response = await axios.get("http://localhost:3004/api/data");
+        const employeeData = response.data?.data?.dataDetail[0];
+        if (employeeData) {
+          this.deptInfo = {
+            dept_change_code: employeeData.dept_change_code,
+            dept_full: employeeData.dept_full
+          };
+        }
+      } catch (error) {
+        console.error("ไม่สามารถดึงข้อมูลแผนกได้:", error);
+      }
+    },
     async fetchSystems() {
       try {
-        console.log('Fetching systems...');
         const response = await axios.get("http://localhost:8088/api/system-records");
-        console.log('Response:', response.data);
-        this.systems = response.data;
+        if (this.deptInfo) {
+          this.systems = response.data.filter(
+            system => system.dept_change_code === this.deptInfo.dept_change_code
+          );
+        }
       } catch (error) {
-        console.error("Error fetching systems:", error);
-        this.toast.error("ไม่สามารถดึงข้อมูลระบบได้");
+        console.error("Error:", error);
       }
     },
     async fetchSystemDetails() {
       if (!this.selectedSystemId) return;
       
       try {
-        console.log('Fetching details for system:', this.selectedSystemId);
         const response = await axios.get(
           `http://localhost:8088/api/system-details/${this.selectedSystemId}`
         );
-        console.log('Response:', response.data);
-        if (response.data) {
-          this.systemDetails = response.data;
+        if (this.deptInfo && response.data) {
+          this.systemDetails = response.data.filter(
+            detail => detail.dept_change_code === this.deptInfo.dept_change_code
+          );
         }
       } catch (error) {
-        console.error("Error fetching details:", error);
+        console.error("Error:", error);
         this.toast.error("ไม่สามารถดึงข้อมูลได้");
       }
     },
@@ -267,12 +283,10 @@ export default {
         );
 
         if (response.status === 200) {
-          // อัพเดท UI ทันที
           this.systemDetails = this.systemDetails.filter(
             item => item.id !== detail.id
           );
           
-          // แสดง toast สีแดง
           this.toast.error("ลบข้อมูลสำเร็จ", {
             position: "top-right",
             timeout: 3000,
@@ -281,7 +295,7 @@ export default {
             draggable: true,
             type: "error",
             theme: "colored",
-            backgroundColor: "#dc3545", // สีแดง Bootstrap
+            backgroundColor: "#dc3545",
             icon: "❌"
           });
         }
@@ -295,7 +309,7 @@ export default {
           draggable: true,
           type: "error",
           theme: "colored",
-          backgroundColor: "#dc3545", // สีแดง Bootstrap
+          backgroundColor: "#dc3545",
           icon: "⚠️"
         });
       }
@@ -307,15 +321,12 @@ export default {
     }
   },
   watch: {
-    selectedSystemId(newVal) {
-      if (newVal) {
-        this.fetchSystemDetails();
-      } else {
-        this.systemDetails = [];
-      }
-    }
+    selectedSystemId() {
+      this.fetchSystemDetails();
+    },
   },
   async created() {
+    await this.fetchDeptInfo();
     await this.fetchSystems();
     if (this.selectedSystemId) {
       await this.fetchSystemDetails();

@@ -1,5 +1,6 @@
 <template>
   <div class="container">
+  
     <div class="header">
       <h1>ข้อมูลระบบ</h1>
       <p class="subtitle">รายการระบบงาน</p>
@@ -26,6 +27,7 @@
             <tr>
               <th class="th-no">ลำดับ</th>
               <th class="th-name">ชื่อระบบงาน</th>
+              <th class="th-dept">แผนก</th>
             </tr>
           </thead>
           <tbody>
@@ -37,6 +39,7 @@
                   <div class="name-en">{{ record.name_en }}</div>
                 </div>
               </td>
+              <td>{{ record.dept_full }}</td>
               <td>
                 <div class="action-buttons">
                   <button
@@ -81,7 +84,8 @@
             >
             <input
               type="text"
-              v-model="editNameTH"
+              :value="isAdding ? nameTH : editNameTH"
+              @input="e => isAdding ? nameTH = e.target.value : editNameTH = e.target.value"
               id="editNameTH"
               required
               class="form-input"
@@ -94,7 +98,8 @@
             >
             <input
               type="text"
-              v-model="editNameEN"
+              :value="isAdding ? nameEN : editNameEN"
+              @input="e => isAdding ? nameEN = e.target.value : editNameEN = e.target.value"
               id="editNameEN"
               required
               class="form-input"
@@ -105,7 +110,7 @@
             <button type="button" @click="cancelEdit" class="btn-cancel">
               <i class="fas fa-times"></i> ยกเลิก
             </button>
-            <button type="submit" class="btn-submit">
+            <button type="submit" class="btn-submit" :disabled="isSubmitting">
               <i class="fas fa-save"></i>
               {{ isAdding ? "เพิ่มระบบ" : "บันทึก" }}
             </button>
@@ -118,8 +123,13 @@
 
 <script>
 import axios from "axios";
+import { useToast } from "vue-toastification";
 
 export default {
+  setup() {
+    const toast = useToast();
+    return { toast }
+  },
   data() {
     return {
       systemRecords: [],
@@ -129,17 +139,29 @@ export default {
       editNameTH: "",
       editNameEN: "",
       searchQuery: "",
+      deptInfo: null,
+      nameTH: "",
+      nameEN: "",
+      isSubmitting: false
     };
   },
   computed: {
     filteredRecords() {
-      if (!this.searchQuery) return this.systemRecords;
-      const query = this.searchQuery.toLowerCase();
-      return this.systemRecords.filter(
-        (record) =>
+      if (!this.deptInfo) return [];
+      
+      let records = this.systemRecords.filter(record => 
+        record.dept_change_code === this.deptInfo.dept_change_code
+      );
+      
+      if (this.searchQuery) {
+        const query = this.searchQuery.toLowerCase();
+        records = records.filter(record =>
           record.name_th.toLowerCase().includes(query) ||
           record.name_en.toLowerCase().includes(query)
-      );
+        );
+      }
+      
+      return records;
     },
   },
   methods: {
@@ -169,14 +191,22 @@ export default {
     },
     async updateSystemRecord() {
       try {
+        if (!this.deptInfo) {
+          alert("ไม่พบข้อมูลแผนก กรุณาลองใหม่อีกครั้ง");
+          return;
+        }
+
         await axios.put(
           `http://localhost:8088/api/system-record/${this.editRecordId}`,
           {
             nameTH: this.editNameTH,
             nameEN: this.editNameEN,
+            dept_change_code: this.deptInfo.dept_change_code,
+            dept_full: this.deptInfo.dept_full
           }
         );
-        this.fetchSystemRecords();
+
+        await this.fetchSystemRecords();
         this.cancelEdit();
       } catch (error) {
         console.error("ไม่สามารถอัปเดตข้อมูลได้:", error);
@@ -188,6 +218,8 @@ export default {
       this.editRecordId = null;
       this.editNameTH = "";
       this.editNameEN = "";
+      this.nameTH = "";
+      this.nameEN = "";
     },
     async confirmDelete(record) {
       if (confirm(`ต้องการลบระบบ "${record.name_th}" ใช่หรือไม่?`)) {
@@ -196,25 +228,68 @@ export default {
     },
     showAddForm() {
       this.isAdding = true;
-      this.editNameTH = "";
-      this.editNameEN = "";
+      this.nameTH = "";
+      this.nameEN = "";
     },
-    async addSystemRecord() {
+    async fetchDeptInfo() {
       try {
-        await axios.post("http://localhost:8088/api/system-record", {
-          nameTH: this.editNameTH,
-          nameEN: this.editNameEN,
-        });
-        await this.fetchSystemRecords();
-        this.cancelEdit();
+        const response = await axios.get("http://localhost:3004/api/data");
+        const employeeData = response.data?.data?.dataDetail[0];
+        if (employeeData) {
+          this.deptInfo = {
+            dept_change_code: employeeData.dept_change_code,
+            dept_full: employeeData.dept_full
+          };
+        }
       } catch (error) {
-        console.error("ไม่สามารถเพิ่มข้อมูลได้:", error);
-        alert("ไม่สามารถเพิ่มข้อมูลได้ กรุณาลองใหม่อีกครั้ง");
+        console.error("ไม่สามารถดึงข้อมูลแผนกได้:", error);
       }
     },
+    async addSystemRecord() {
+      if (!this.nameTH || !this.nameEN) {
+        this.toast.error("กรุณากรอกชื่อภาษาไทยและภาษาอังกฤษ");
+        return;
+      }
+
+      if (!this.deptInfo) {
+        this.toast.error("ไม่พบข้อมูลแผนก กรุณาลองใหม่อีกครั้ง");
+        return;
+      }
+
+      this.isSubmitting = true;
+
+      try {
+        const response = await axios.post("http://localhost:8088/api/system-record", {
+          nameTH: this.nameTH,
+          nameEN: this.nameEN,
+          dept_change_code: this.deptInfo.dept_change_code,
+          dept_full: this.deptInfo.dept_full
+        });
+
+        if (response.data.message === "บันทึกข้อมูลสำเร็จ") {
+          this.toast.success("บันทึกข้อมูลสำเร็จ");
+          await this.fetchSystemRecords();
+          this.cancelEdit();
+        }
+      } catch (error) {
+        console.error("Error:", error);
+        this.toast.error("ไม่สามารถบันทึกข้อมูลได้");
+      } finally {
+        this.isSubmitting = false;
+      }
+    },
+    resetForm() {
+      this.nameTH = "";
+      this.nameEN = "";
+    },
+    cancelAdd() {
+      this.isAdding = false;
+      this.resetForm();
+    }
   },
-  mounted() {
-    this.fetchSystemRecords();
+  async mounted() {
+    await this.fetchDeptInfo();
+    await this.fetchSystemRecords();
   },
 };
 </script>
@@ -516,5 +591,29 @@ label {
 
 .btn-add:hover {
   background-color: #059669;
+}
+
+.dept-info {
+  background: #f8fafc;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  border: 1px solid #e2e8f0;
+}
+
+.dept-info h2 {
+  color: #1e293b;
+  margin: 0 0 8px 0;
+  font-size: 1.2rem;
+}
+
+.dept-info p {
+  color: #64748b;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.th-dept {
+  width: 30%;
 }
 </style>

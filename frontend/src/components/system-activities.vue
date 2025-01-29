@@ -34,7 +34,6 @@
                   :value="system.id"
                 >
                   {{ system.name_th }}-{{ system.name_en }}
-
                 </option>
               </select>
             </div>
@@ -55,7 +54,7 @@
                   :key="info.id"
                   :value="info.id"
                 >
-                  {{ info.name }}
+                  {{ info.important_info }}
                 </option>
               </select>
             </div>
@@ -94,24 +93,19 @@
                   type="file"
                   multiple
                   @change="handleFileUpload"
-                  accept=".pdf,.doc,.docx"
                   class="hidden"
                 />
                 <div class="upload-placeholder">
-                  <i class="fas fa-cloud-upload-alt"></i>
+                  <i class="fas fa-file"></i>
                   <span>คลิกหรือลากไฟล์มาวางที่นี่</span>
                   <small>รองรับไฟล์ PDF, DOC, DOCX</small>
                 </div>
               </div>
-              <!-- File List -->
-              <div class="file-list" v-if="files.length > 0">
-                <div
-                  v-for="(file, index) in files"
-                  :key="index"
-                  class="file-item"
-                >
-                  <i class="fas fa-file-alt"></i>
-                  <span class="file-name">{{ file.name }}</span>
+              <!-- File Preview -->
+              <div class="file-preview" v-if="files.length > 0">
+                <div v-for="(file, index) in files" :key="index" class="preview-item">
+                  <i class="fas fa-file"></i>
+                  <span>{{ file.name }}</span>
                   <button @click.prevent="removeFile(index)" class="remove-btn">
                     <i class="fas fa-times"></i>
                   </button>
@@ -147,20 +141,9 @@
               </div>
               <!-- Image Preview -->
               <div class="image-preview" v-if="images.length > 0">
-                <div
-                  v-for="(image, index) in images"
-                  :key="index"
-                  class="preview-item"
-                >
-                  <img
-                    v-if="image"
-                    :src="getImagePreviewUrl(image)"
-                    alt="Preview"
-                  />
-                  <button
-                    @click.prevent="removeImage(index)"
-                    class="remove-btn"
-                  >
+                <div v-for="(image, index) in images" :key="index" class="preview-item">
+                  <img v-if="image" :src="getImagePreviewUrl(image)" alt="Preview" />
+                  <button @click.prevent="removeImage(index)" class="remove-btn">
                     <i class="fas fa-times"></i>
                   </button>
                 </div>
@@ -180,76 +163,6 @@
             </button>
           </div>
         </form>
-      </div>
-
-      <!-- Activities List Section -->
-      <div v-if="activities.length > 0" class="activities-section">
-        <div class="section-header">
-          <i class="fas fa-list-alt"></i>
-          <span>รายการกิจกรรม</span>
-        </div>
-
-        <div class="activity-list">
-          <div
-            v-for="activity in activities"
-            :key="activity.id"
-            class="activity-card"
-          >
-            <div class="activity-header">
-              <div class="activity-date">
-                <i class="fas fa-calendar-alt"></i>
-                {{ formatDate(activity.created_at) }}
-              </div>
-            </div>
-
-            <div class="activity-body">
-              <p class="activity-details">{{ activity.details }}</p>
-
-              <!-- Attached Files -->
-              <div v-if="activity.file_paths" class="attachments">
-                <h4>
-                  <i class="fas fa-paperclip"></i>
-                  เอกสารแนบ
-                </h4>
-                <div class="attachment-list">
-                  <a
-                    v-for="(filePath, index) in activity.file_paths.split(',')"
-                    :key="index"
-                    :href="`http://localhost:8088${filePath}`"
-                    target="_blank"
-                    class="attachment-link"
-                  >
-                    <i class="fas fa-file"></i>
-                    <span>{{ getFileName(filePath) }}</span>
-                  </a>
-                </div>
-              </div>
-
-              <!-- Attached Images -->
-              <div v-if="activity.image_paths" class="activity-images">
-                <h4>
-                  <i class="fas fa-images"></i>
-                  รูปภาพ
-                </h4>
-                <div class="image-grid">
-                  <div
-                    v-for="(imagePath, index) in activity.image_paths.split(
-                      ','
-                    )"
-                    :key="index"
-                    class="image-item"
-                    @click="openImageViewer(imagePath)"
-                  >
-                    <img
-                      :src="`http://localhost:8088${imagePath}`"
-                      alt="Activity image"
-                    />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   </div>
@@ -275,19 +188,40 @@ export default {
       images: [],
       isSubmitted: false,
       activities: [],
+      deptInfo: null
     };
   },
   methods: {
-    async fetchSystems() {
+    async fetchDeptInfo() {
       try {
-        const response = await axios.get(
-          "http://localhost:8088/api/system-records"
-        );
-        this.systemList = response.data;
+        const response = await axios.get("http://localhost:3004/api/data");
+        const employeeData = response.data?.data?.dataDetail[0];
+        if (employeeData) {
+          this.deptInfo = {
+            dept_change_code: employeeData.dept_change_code,
+            dept_full: employeeData.dept_full
+          };
+          await this.fetchSystems(); // เรียกดึงข้อมูลระบบหลังจากได้ข้อมูลแผนก
+        }
       } catch (error) {
-        console.error("ไม่สามารถดึงข้อมูลระบบได้:", error);
+        console.error("Error:", error);
       }
     },
+
+    async fetchSystems() {
+      try {
+        const response = await axios.get("http://localhost:8088/api/system-records");
+        // กรองระบบตามแผนก
+        if (this.deptInfo) {
+          this.systemList = response.data.filter(
+            system => system.dept_change_code === this.deptInfo.dept_change_code
+          );
+        }
+      } catch (error) {
+        console.error("Error:", error);
+      }
+    },
+
     async fetchImportantInfo() {
       if (!this.selectedSystemId) {
         this.importantInfoList = [];
@@ -299,7 +233,7 @@ export default {
         );
         this.importantInfoList = response.data.map((item) => ({
           id: item.id,
-          name: item.important_info,
+          important_info: item.important_info,
         }));
       } catch (error) {
         console.error("ไม่สามารถดึงข้อมูลสำคัญได้:", error);
@@ -322,7 +256,17 @@ export default {
     async submitForm() {
       this.isSubmitted = true;
       if (!this.selectedSystemId || !this.importantInfo || !this.details) {
-        alert("กรุณากรอกข้อมูลให้ครบถ้วน");
+        this.toast.error("กรุณากรอกข้อมูลให้ครบถ้วน");
+        return;
+      }
+
+      // ดึงข้อมูลแผนกจากระบบที่เลือก
+      const selectedSystem = this.systemList.find(
+        system => system.id === this.selectedSystemId
+      );
+
+      if (!selectedSystem) {
+        this.toast.error("ไม่พบข้อมูลระบบที่เลือก");
         return;
       }
 
@@ -330,6 +274,8 @@ export default {
       formData.append("systemId", this.selectedSystemId);
       formData.append("importantInfo", this.importantInfo);
       formData.append("details", this.details);
+      formData.append("dept_change_code", selectedSystem.dept_change_code);
+      formData.append("dept_full", selectedSystem.dept_full);
 
       this.files.forEach((file) => formData.append("files", file));
       this.images.forEach((image) => formData.append("images", image));
@@ -344,11 +290,15 @@ export default {
             },
           }
         );
-        this.toast.success("บันทึกกิจกรรมสำเร็จ");
-        this.resetForm();
+
+        if (response.data.success) {
+          this.toast.success("บันทึกกิจกรรมสำเร็จ");
+          this.resetForm();
+          await this.fetchActivities();
+        }
       } catch (error) {
-        console.error("เกิดข้อผิดพลาดในการบันทึกกิจกรรม:", error);
-        alert("ไม่สามารถบันทึกกิจกรรมได้ กรุณาลองใหม่อีกครั้ง");
+        console.error("Error:", error);
+        this.toast.error(error.response?.data?.message || "ไม่สามารถบันทึกข้อมูลได้");
       }
     },
     resetForm() {
@@ -366,11 +316,16 @@ export default {
 
       try {
         const response = await axios.get(
-          `http://localhost:8088/api/system-activities/${this.selectedSystemId}/${this.importantInfo}`
+          `http://localhost:8088/api/activities/${this.selectedSystemId}/${this.importantInfo}`
         );
-        this.activities = response.data;
+        // กรองกิจกรรมตามแผนก
+        if (this.deptInfo) {
+          this.activities = response.data.filter(
+            activity => activity.dept_change_code === this.deptInfo.dept_change_code
+          );
+        }
       } catch (error) {
-        console.error("Error fetching activities:", error);
+        console.error("Error:", error);
       }
     },
     formatDate(dateString) {
@@ -395,8 +350,8 @@ export default {
       this.fetchActivities();
     },
   },
-  mounted() {
-    this.fetchSystems();
+  async mounted() {
+    await this.fetchDeptInfo();
   },
   beforeUnmount() {
     // Cleanup image URLs
@@ -538,12 +493,11 @@ textarea:focus {
   display: none;
 }
 
-.file-list,
+.file-preview,
 .image-preview {
   margin-top: 16px;
 }
 
-.file-item,
 .preview-item {
   background: white;
   padding: 8px;
@@ -605,112 +559,6 @@ textarea:focus {
 
 .btn-secondary:hover {
   background: #7f8c8d;
-}
-
-.activities-section {
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 1.2rem;
-  color: #2c3e50;
-  margin-bottom: 24px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #eee;
-}
-
-.activity-card {
-  background: #f8f9fa;
-  border-radius: 6px;
-  padding: 16px;
-  margin-bottom: 12px;
-}
-
-.activity-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.activity-date {
-  color: #666;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.activity-details {
-  color: #2c3e50;
-  line-height: 1.6;
-  margin-bottom: 16px;
-}
-
-.attachments,
-.activity-images {
-  margin-top: 16px;
-}
-
-.attachments h4,
-.activity-images h4 {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #666;
-  margin-bottom: 12px;
-}
-
-.attachment-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-}
-
-.attachment-link {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
-  background: white;
-  border-radius: 6px;
-  color: #2c3e50;
-  text-decoration: none;
-  transition: all 0.3s ease;
-}
-
-.attachment-link:hover {
-  background: #eee;
-}
-
-.image-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-  gap: 8px;
-}
-
-.image-item {
-  position: relative;
-  aspect-ratio: 1;
-  overflow: hidden;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.image-item img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.3s ease;
-}
-
-.image-item:hover img {
-  transform: scale(1.05);
 }
 
 @media (max-width: 768px) {

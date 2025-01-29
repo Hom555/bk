@@ -27,34 +27,66 @@
 
 
 const axios = require('axios');
+const mysql = require('mysql2/promise');
 
-axios.get('http://localhost:3004/api/data')
-  .then(response => {
-    // ตรวจสอบข้อมูลใน response ด้วย Optional Chaining
+// กำหนดค่าการเชื่อมต่อฐานข้อมูล
+const dbConfig = {
+  host: 'localhost',
+  user: 'root',
+  password: '12345678',
+  database: 'activitydb'
+};
+
+async function saveDepartments() {
+  try {
+    // เชื่อมต่อฐานข้อมูล
+    const connection = await mysql.createConnection(dbConfig);
+    console.log('เชื่อมต่อฐานข้อมูลสำเร็จ');
+
+    // ดึงข้อมูลจาก API
+    const response = await axios.get('http://localhost:3004/api/data');
     const employeeData = response.data?.data?.dataDetail;
 
-    // กรณีไม่มีข้อมูลหรือข้อมูลว่าง
-    if (!employeeData || !Array.isArray(employeeData) || employeeData.length === 0) {
-      console.warn('ไม่พบข้อมูลพนักงานหรือข้อมูลว่าง');
-      return;
+    if (!employeeData || !Array.isArray(employeeData)) {
+      throw new Error('ไม่พบข้อมูลพนักงาน');
     }
 
-    // แสดงข้อมูลพนักงาน
-    employeeData.forEach(employee => {
-      const fullName = `${employee.first_name} ${employee.last_name}`;
-      console.log('Full Name:', fullName);
-
-      const department = employee.dept_full || 'ไม่ระบุแผนก';
-      console.log('Department:', department);
+    // กรองเฉพาะ dept_change_code และ dept_full ที่ไม่ซ้ำกัน
+    const uniqueDepts = new Map();
+    employeeData.forEach(emp => {
+      if (emp.dept_change_code && emp.dept_full) {
+        uniqueDepts.set(emp.dept_change_code, {
+          dept_change_code: emp.dept_change_code,
+          dept_full: emp.dept_full
+        });
+      }
     });
-  })
-  .catch(error => {
-    // ตรวจสอบข้อผิดพลาดจากเซิร์ฟเวอร์
-    if (error.response) {
-      console.error('ข้อผิดพลาดจากเซิร์ฟเวอร์:', error.response.status, error.response.data);
-    } else {
-      // ข้อผิดพลาดทั่วไป เช่น การเชื่อมต่อหรือโครงสร้างผิด
-      console.error('เกิดข้อผิดพลาด:', error.message);
+
+    // แปลงเป็น array สำหรับบันทึกลง MySQL
+    const deptArray = Array.from(uniqueDepts.values());
+    
+    // บันทึกข้อมูลลงฐานข้อมูล
+    for (const dept of deptArray) {
+      await connection.query(`
+        INSERT INTO departments (dept_change_code, dept_full) 
+        VALUES (?, ?) 
+        ON DUPLICATE KEY UPDATE dept_full = VALUES(dept_full)
+      `, [dept.dept_change_code, dept.dept_full]);
     }
-  });
+
+    console.log(`บันทึกข้อมูลแผนกสำเร็จ ${deptArray.length} รายการ`);
+
+    // แสดงข้อมูลที่บันทึก
+    const [rows] = await connection.query('SELECT * FROM departments');
+    console.log('ข้อมูลแผนกในฐานข้อมูล:', rows);
+
+    await connection.end();
+
+  } catch (error) {
+    console.error('เกิดข้อผิดพลาด:', error.message);
+  }
+}
+
+// เรียกใช้งานฟังก์ชัน
+saveDepartments();
 

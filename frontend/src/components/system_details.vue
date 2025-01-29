@@ -130,6 +130,10 @@ import axios from "axios";
 import { useToast } from "vue-toastification";
 
 export default {
+  setup() {
+    const toast = useToast();
+    return { toast }
+  },
   data() {
     return {
       systemList: [],
@@ -138,87 +142,120 @@ export default {
       referenceNo: "",
       additionalInfo: "",
       files: null,
+      deptInfo: null,
+      isSubmitting: false
     };
   },
-  setup() {
-    const toast = useToast();
-    return { toast }
-  },
   methods: {
+    async fetchDeptInfo() {
+      try {
+        const response = await axios.get("http://localhost:3004/api/data");
+        const employeeData = response.data?.data?.dataDetail[0];
+        if (employeeData) {
+          this.deptInfo = {
+            dept_change_code: employeeData.dept_change_code,
+            dept_full: employeeData.dept_full
+          };
+        }
+      } catch (error) {
+        console.error("ไม่สามารถดึงข้อมูลแผนกได้:", error);
+      }
+    },
+
     async fetchSystems() {
       try {
-        const response = await axios.get(
-          "http://localhost:8088/api/system-records"
-        );
-        this.systemList = response.data;
+        const response = await axios.get("http://localhost:8088/api/system-records");
+        if (this.deptInfo) {
+          this.systemList = response.data.filter(
+            system => system.dept_change_code === this.deptInfo.dept_change_code
+          );
+        }
       } catch (error) {
-        console.error("ไม่สามารถดึงข้อมูลระบบได้:", error);
+        console.error("Error:", error);
         this.toast.error("ไม่สามารถดึงข้อมูลระบบได้");
       }
     },
+
     handleFileUpload(event) {
-      this.files = event.target.files || [];
+      this.files = event.target.files;
     },
+
     async submitForm() {
       if (!this.selectedSystemId || !this.importantInfo || !this.referenceNo) {
         this.toast.error("กรุณากรอกข้อมูลให้ครบถ้วน");
         return;
       }
 
-      const formData = new FormData();
-      formData.append("systemId", this.selectedSystemId);
-      formData.append("importantInfo", this.importantInfo);
-      formData.append("referenceNo", this.referenceNo);
-      formData.append("additionalInfo", this.additionalInfo || "");
-
-      if (this.files && this.files.length > 0) {
-        for (let i = 0; i < this.files.length; i++) {
-          formData.append("files", this.files[i]);
-        }
+      if (!this.deptInfo) {
+        this.toast.error("ไม่พบข้อมูลแผนก กรุณาลองใหม่อีกครั้ง");
+        return;
       }
 
+      this.isSubmitting = true;
+
       try {
+        const formData = new FormData();
+        formData.append("systemId", this.selectedSystemId);
+        formData.append("importantInfo", this.importantInfo);
+        formData.append("referenceNo", this.referenceNo);
+        formData.append("additionalInfo", this.additionalInfo || "");
+        formData.append("dept_change_code", this.deptInfo.dept_change_code);
+        formData.append("dept_full", this.deptInfo.dept_full);
+
+        if (this.files) {
+          Array.from(this.files).forEach((file) => {
+            formData.append("files", file);
+          });
+        }
+
         const response = await axios.post(
           "http://localhost:8088/api/system-details",
           formData,
           {
-            headers: { "Content-Type": "multipart/form-data" },
+            headers: {
+              "Content-Type": "multipart/form-data",
+            },
           }
         );
 
-        this.toast.success("บันทึกข้อมูลเรียบร้อยแล้ว");
-        this.resetForm();
+        if (response.data.success) {
+          this.toast.success("บันทึกข้อมูลสำเร็จ");
+          this.resetForm();
+        }
       } catch (error) {
-        console.error("เกิดข้อผิดพลาดในการบันทึกข้อมูล:", error);
-        this.toast.error("ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง");
+        console.error("Error:", error);
+        this.toast.error(error.response?.data?.message || "ไม่สามารถบันทึกข้อมูลได้");
+      } finally {
+        this.isSubmitting = false;
       }
     },
+
     resetForm() {
       this.selectedSystemId = "";
       this.importantInfo = "";
       this.referenceNo = "";
       this.additionalInfo = "";
       this.files = null;
-      // this.toast.info("รีเซ็ตฟอร์มเรียบร้อย");
+      if (this.$refs.fileInput) {
+        this.$refs.fileInput.value = "";
+      }
     },
+
     removeFile(index) {
       const fileArray = Array.from(this.files);
       fileArray.splice(index, 1);
-      this.files = fileArray;
-      if (fileArray.length === 0) {
-        document.getElementById("fileUpload").value = "";
-      }
+      this.files = new FileList(fileArray);
     },
+
     triggerFileInput() {
       this.$refs.fileInput.click();
     }
   },
-  mounted() {
-    this.fetchSystems();
-  },
-  
+  async mounted() {
+    await this.fetchDeptInfo();
+    await this.fetchSystems();
+  }
 };
-
 </script>
 
 <style scoped>
