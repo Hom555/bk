@@ -165,7 +165,7 @@
                   <button @click="saveEdit(activity)" class="btn-save" title="บันทึก">
                     <i class="fas fa-save"></i>
                   </button>
-                  <button @click="cancelEdit(activity)" class="btn-cancel" title="ยกเลิก">
+                  <button @click="cancelEdit()" class="btn-cancel" title="ยกเลิก">
                     <i class="fas fa-times"></i>
                   </button>
                 </template>
@@ -379,6 +379,12 @@ export default {
       }
     },
     startEdit(activity) {
+      // ยกเลิกการแก้ไขรายการอื่นก่อน (ถ้ามี)
+      const currentEditing = this.activities.find(a => a.editing);
+      if (currentEditing) {
+        this.cancelEdit();
+      }
+
       // เก็บข้อมูลเดิมและเปิดโหมดแก้ไข
       activity.editing = true;
       activity.editedInfo = {
@@ -386,12 +392,19 @@ export default {
         file_paths: activity.file_paths,
         image_paths: activity.image_paths
       };
+
+      // ตั้งค่าตัวแปรสำหรับการแก้ไข
       this.editingId = activity.id;
       this.editedDetails = activity.details;
       this.newFiles = [];
       this.newImages = [];
       this.removedFiles = [];
       this.removedImages = [];
+
+      // แจ้งเตือนผู้ใช้
+      this.toast.info("เริ่มแก้ไขข้อมูล", {
+        timeout: 2000
+      });
     },
 
     async saveEdit() {
@@ -460,20 +473,33 @@ export default {
     cancelEdit() {
       // ยกเลิกการแก้ไขและคืนค่าเดิม
       const activity = this.activities.find(a => a.id === this.editingId);
-      if (activity) {
+      if (activity && activity.editedInfo) {
+        // คืนค่าข้อมูลเดิม
+        activity.details = activity.editedInfo.details;
+        activity.file_paths = activity.editedInfo.file_paths;
+        activity.image_paths = activity.editedInfo.image_paths;
+        
+        // ล้างข้อมูลการแก้ไข
         activity.editing = false;
-        if (activity.editedInfo) {
-          activity.details = activity.editedInfo.details;
-          activity.file_paths = activity.editedInfo.file_paths;
-          activity.image_paths = activity.editedInfo.image_paths;
-        }
+        delete activity.editedInfo;
+        delete activity.newFiles;
+        delete activity.newImages;
+        delete activity.removedFiles;
+        delete activity.removedImages;
       }
+
+      // รีเซ็ตตัวแปรที่เกี่ยวข้องกับการแก้ไข
       this.editingId = null;
       this.editedDetails = "";
       this.newFiles = [];
       this.newImages = [];
       this.removedFiles = [];
       this.removedImages = [];
+
+      // แจ้งเตือนผู้ใช้
+      this.toast.info("ยกเลิกการแก้ไข", {
+        timeout: 2000
+      });
     },
 
     handleFileChange(event, activity) {
@@ -743,46 +769,96 @@ tr:hover td {
   background: #e2e8f0;
 }
 
-.image-thumbnails {
+.image-list {
   display: flex;
-  gap: 8px;
   flex-wrap: wrap;
-  justify-content: flex-start;
+  gap: 8px;
+  padding: 8px;
 }
 
-.thumbnail {
-  width: 40px;
-  height: 40px;
-  border-radius: 4px;
+.image-thumbnail {
+  width: 100px;
+  height: 100px;
+  border-radius: 8px;
   overflow: hidden;
   cursor: pointer;
-  transition: transform 0.2s ease;
+  border: 2px solid #e1e8ef;
+  transition: all 0.2s ease;
+  position: relative;
 }
 
-.thumbnail:hover {
-  transform: scale(1.1);
+.image-thumbnail:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-color: #3498db;
 }
 
-.thumbnail img {
+.image-thumbnail img {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  object-position: center;
 }
 
-.no-files,
 .no-images {
-  color: #94a3b8;
+  color: #666;
   font-style: italic;
+  padding: 8px;
+  text-align: center;
+  width: 100%;
 }
 
-@media (max-width: 1024px) {
-  .table-container {
-    margin: 0 -24px;
-  }
+.file-input {
+  width: 100%;
+  padding: 8px;
+  border: 2px dashed #e1e8ef;
+  border-radius: 8px;
+  background-color: #f8f9fa;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
 
-  table {
-    min-width: 1000px;
-  }
+.file-input:hover {
+  border-color: #3498db;
+  background-color: #f0f7fc;
+}
+
+.editing-row .image-thumbnail {
+  opacity: 0.7;
+}
+
+table td:nth-child(5) {
+  min-width: 220px;
+  max-width: 300px;
+}
+
+.image-container {
+  position: relative;
+  display: inline-block;
+}
+
+.remove-image {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background-color: #fff;
+  border: 1px solid #dc3545;
+  color: #dc3545;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 12px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  z-index: 1;
+}
+
+.remove-image:hover {
+  background-color: #dc3545;
+  color: #fff;
 }
 
 .header-info {
