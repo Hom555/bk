@@ -89,105 +89,86 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(activity, index) in activities" :key="activity.id">
+            <tr v-for="(activity, index) in activities" :key="activity.id" :class="{ 'editing-row': activity.editing }">
               <td class="text-center">{{ index + 1 }}</td>
               <td>{{ formatDate(activity.created_at) }}</td>
               <td>
-                <div v-if="editingId === activity.id">
-                  <textarea
-                    v-model="editedDetails"
-                    class="edit-textarea"
-                    placeholder="รายละเอียด"
-                    @keyup.enter="saveEdit(activity)"
-                    @keyup.esc="cancelEdit"
-                  ></textarea>
-                  <div class="edit-actions">
-                    <button
-                      @click="saveEdit(activity)"
-                      class="btn-save"
-                      title="บันทึก"
-                    >
-                      <i class="fas fa-check"></i>
-                    </button>
-                    <button
-                      @click="cancelEdit"
-                      class="btn-cancel"
-                      title="ยกเลิก"
-                    >
-                      <i class="fas fa-times"></i>
-                    </button>
-                  </div>
-                  <div class="edit-files">
-                    <label for="newFiles">อัพโหลดไฟล์ใหม่:</label>
-                    <input type="file" id="newFiles" multiple @change="handleFileChange" />
-                    <div class="files-preview">
-                      <div v-for="(file, index) in newFiles" :key="index" class="file-item">
-                        <span>{{ file.name }}</span>
-                        <button @click="removeNewFile(index)">ลบ</button>
-                      </div>
-                    </div>
-                  </div>
-                  <div class="edit-images">
-                    <label for="newImages">อัพโหลดรูปภาพใหม่:</label>
-                    <input type="file" id="newImages" multiple accept="image/*" @change="handleImageChange" />
-                    <div class="images-preview">
-                      <div v-for="(image, index) in newImages" :key="index" class="image-item">
-                        <img :src="getImagePreview(image)" alt="Preview" />
-                        <button @click="removeNewImage(index)">ลบ</button>
-                      </div>
-                    </div>
-                  </div>
+                <input
+                  v-if="activity.editing"
+                  v-model="activity.editedInfo.details"
+                  type="text"
+                  class="edit-input-same-cell"
+                  :style="{ height: activity.editing ? '100%' : 'auto' }"
+                  placeholder="รายละเอียด"
+                />
+                <span v-else class="cell-text">{{ activity.details }}</span>
+              </td>
+              <td>
+                <div v-if="activity.editing">
+                  <input
+                    type="file"
+                    @change="handleFileChange($event, activity)"
+                    multiple
+                    class="file-input"
+                  />
                 </div>
-                <div v-else>
-                  {{ activity.details }}
+                <div v-else class="file-list">
+                  <template v-if="activity.file_paths">
+                    <a
+                      v-for="filePath in activity.file_paths.split(',')"
+                      :key="filePath"
+                      :href="`http://localhost:8088${filePath}`"
+                      target="_blank"
+                      class="file-link"
+                    >
+                      <i class="fas fa-file-alt"></i>
+                      {{ getFileName(filePath) }}
+                    </a>
+                  </template>
+                  <div v-else class="no-files">ไม่มีไฟล์แนบ</div>
                 </div>
               </td>
               <td>
-                <div class="file-list" v-if="activity.file_paths">
-                  <a
-                    v-for="(file, fIndex) in activity.file_paths.split(',')"
-                    :key="fIndex"
-                    :href="`http://localhost:8088${file}`"
-                    target="_blank"
-                    class="file-link"
-                  >
-                    <i class="fas fa-file-alt"></i>
-                    <span class="file-name">{{ getFileName(file) }}</span>
-                  </a>
+                <div v-if="activity.editing">
+                  <input
+                    type="file"
+                    @change="handleImageChange($event, activity)"
+                    multiple
+                    accept="image/*"
+                    class="file-input"
+                  />
                 </div>
-                <span v-else class="no-files">-</span>
-              </td>
-              <td>
-                <div class="image-thumbnails" v-if="activity.image_paths">
-                  <div
-                    v-for="(image, iIndex) in activity.image_paths.split(',')"
-                    :key="iIndex"
-                    class="thumbnail"
-                    @click="openImage(`http://localhost:8088${image}`)"
-                  >
-                    <img
-                      :src="`http://localhost:8088${image}`"
-                      alt="Activity image"
-                    />
-                  </div>
+                <div v-else class="image-list">
+                  <template v-if="activity.image_paths">
+                    <div
+                      v-for="imagePath in activity.image_paths.split(',')"
+                      :key="imagePath"
+                      class="image-thumbnail"
+                      @click="openImage(`http://localhost:8088${imagePath}`)"
+                    >
+                      <img :src="`http://localhost:8088${imagePath}`" alt="Activity image" />
+                    </div>
+                  </template>
+                  <div v-else class="no-images">ไม่มีรูปภาพ</div>
                 </div>
-                <span v-else class="no-images">-</span>
               </td>
               <td class="text-center action-buttons">
-                <button
-                  class="btn-edit"
-                  @click="startEdit(activity)"
-                  title="แก้ไข"
-                >
-                  <i class="fas fa-edit"></i>
-                </button>
-                <button
-                  class="btn-delete"
-                  @click="confirmDelete(activity)"
-                  title="ลบ"
-                >
-                  <i class="fas fa-trash-alt"></i>
-                </button>
+                <template v-if="!activity.editing">
+                  <button @click="startEdit(activity)" class="btn-edit" title="แก้ไข">
+                    <i class="fas fa-edit"></i>
+                  </button>
+                  <button @click="confirmDelete(activity)" class="btn-delete" title="ลบ">
+                    <i class="fas fa-trash-alt"></i>
+                  </button>
+                </template>
+                <template v-else>
+                  <button @click="saveEdit(activity)" class="btn-save" title="บันทึก">
+                    <i class="fas fa-save"></i>
+                  </button>
+                  <button @click="cancelEdit(activity)" class="btn-cancel" title="ยกเลิก">
+                    <i class="fas fa-times"></i>
+                  </button>
+                </template>
               </td>
             </tr>
           </tbody>
@@ -397,51 +378,53 @@ export default {
         await this.deleteActivity(activity.id);
       }
     },
-    async startEdit(activity) {
+    startEdit(activity) {
+      // เก็บข้อมูลเดิมและเปิดโหมดแก้ไข
+      activity.editing = true;
+      activity.editedInfo = {
+        details: activity.details,
+        file_paths: activity.file_paths,
+        image_paths: activity.image_paths
+      };
       this.editingId = activity.id;
       this.editedDetails = activity.details;
       this.newFiles = [];
       this.newImages = [];
       this.removedFiles = [];
       this.removedImages = [];
-      this.toast.info("เริ่มแก้ไขข้อมูล", {
-        timeout: 2000
-      });
     },
-    cancelEdit() {
-      this.editingId = null;
-      this.editedDetails = "";
-      this.newFiles = [];
-      this.newImages = [];
-      this.removedFiles = [];
-      this.removedImages = [];
-      this.toast.warning("ยกเลิกการแก้ไข", {
-        timeout: 2000
-      });
-    },
+
     async saveEdit() {
       try {
-        // ค้นหาข้อมูลที่ต้องการแก้ไขจาก activities ปัจจุบัน
-        const activityToEdit = this.activities.find(activity => activity.id === this.editingId);
-        if (!activityToEdit) {
+        // หาข้อมูลที่กำลังแก้ไข
+        const activity = this.activities.find(a => a.id === this.editingId);
+        if (!activity) {
           throw new Error("ไม่พบข้อมูลกิจกรรมที่ต้องการแก้ไข");
+        }
+
+        // ตรวจสอบข้อมูลที่จำเป็น
+        if (!this.editedDetails.trim()) {
+          throw new Error("กรุณากรอกรายละเอียด");
         }
 
         const formData = new FormData();
         formData.append('details', this.editedDetails);
 
+        // จัดการไฟล์ใหม่
         if (this.newFiles.length > 0) {
           this.newFiles.forEach(file => {
             formData.append('files', file);
           });
         }
 
+        // จัดการรูปภาพใหม่
         if (this.newImages.length > 0) {
           this.newImages.forEach(image => {
             formData.append('images', image);
           });
         }
 
+        // จัดการไฟล์และรูปภาพที่ต้องการลบ
         formData.append('removedFiles', JSON.stringify(this.removedFiles));
         formData.append('removedImages', JSON.stringify(this.removedImages));
 
@@ -456,20 +439,12 @@ export default {
         );
 
         if (response.data.success) {
-          // อัพเดทเฉพาะข้อมูลที่กำลังแก้ไข
-          const updatedActivity = {
-            ...activityToEdit,
-            details: this.editedDetails,
-            file_paths: response.data.file_paths,
-            image_paths: response.data.image_paths,
-            updated_at: new Date().toISOString()
-          };
-
-          // อัพเดทเฉพาะในรายการที่กำลังแสดง
-          const index = this.activities.findIndex(activity => activity.id === this.editingId);
-          if (index !== -1) {
-            this.activities.splice(index, 1, updatedActivity);
-          }
+          // อัพเดทข้อมูลในแถวที่แก้ไข
+          activity.details = this.editedDetails;
+          activity.file_paths = response.data.file_paths;
+          activity.image_paths = response.data.image_paths;
+          activity.updated_at = new Date().toISOString();
+          activity.editing = false;
 
           this.toast.success("บันทึกการแก้ไขสำเร็จ");
           this.cancelEdit();
@@ -481,55 +456,40 @@ export default {
         this.toast.error(error.message || "ไม่สามารถบันทึกการแก้ไขได้");
       }
     },
-    handleFileChange(event) {
-      const files = Array.from(event.target.files);
-      this.newFiles = files;
-      this.toast.info(`เลือกไฟล์ ${files.length} ไฟล์`, {
-        timeout: 2000
-      });
+
+    cancelEdit() {
+      // ยกเลิกการแก้ไขและคืนค่าเดิม
+      const activity = this.activities.find(a => a.id === this.editingId);
+      if (activity) {
+        activity.editing = false;
+        if (activity.editedInfo) {
+          activity.details = activity.editedInfo.details;
+          activity.file_paths = activity.editedInfo.file_paths;
+          activity.image_paths = activity.editedInfo.image_paths;
+        }
+      }
+      this.editingId = null;
+      this.editedDetails = "";
+      this.newFiles = [];
+      this.newImages = [];
+      this.removedFiles = [];
+      this.removedImages = [];
     },
-    handleImageChange(event) {
+
+    handleFileChange(event, activity) {
+      activity.newFiles = Array.from(event.target.files);
+      activity.removedFiles = [];
+    },
+
+    handleImageChange(event, activity) {
       const files = Array.from(event.target.files);
-      const validImages = files.filter((file) =>
-        file.type.startsWith("image/")
-      );
+      const validImages = files.filter(file => file.type.startsWith('image/'));
       if (validImages.length !== files.length) {
-        this.toast.error("กรุณาเลือกไฟล์รูปภาพเท่านั้น", {
-          timeout: 3000
-        });
+        this.toast.error("กรุณาเลือกไฟล์รูปภาพเท่านั้น");
         return;
       }
-      this.newImages = validImages;
-      this.toast.info(`เลือกรูปภาพ ${validImages.length} รูป`, {
-        timeout: 2000
-      });
-    },
-    removeFile(index) {
-      const files = this.activity.file_paths.split(",");
-      this.removedFiles.push(files[index]);
-      files.splice(index, 1);
-      this.activity.file_paths = files.join(",");
-    },
-    removeImage(index) {
-      const images = this.activity.image_paths.split(",");
-      this.removedImages.push(images[index]);
-      images.splice(index, 1);
-      this.activity.image_paths = images.join(",");
-    },
-    removeNewFile(index) {
-      this.newFiles.splice(index, 1);
-      this.toast.info("ลบไฟล์ที่เลือกแล้ว", {
-        timeout: 2000
-      });
-    },
-    removeNewImage(index) {
-      this.newImages.splice(index, 1);
-      this.toast.info("ลบรูปภาพที่เลือกแล้ว", {
-        timeout: 2000
-      });
-    },
-    getImagePreview(file) {
-      return URL.createObjectURL(file);
+      activity.newImages = validImages;
+      activity.removedImages = [];
     },
     async fetchSystemDetails() {
       if (!this.selectedSystemId) {
