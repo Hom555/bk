@@ -611,7 +611,7 @@ app.put('/api/activities/:id', upload.fields([{ name: 'files' }, { name: 'images
     const updatedFilePaths = [...currentFiles, ...newFilePaths].filter(Boolean).join(',');
     const updatedImagePaths = [...currentImages, ...newImagePaths].filter(Boolean).join(',');
 
-    // อัพเดทข้อมูลในฐานข้อมูลเฉพาะรายการที่เลือก
+    // อัพเดทข้อมูลเฉพาะรายการที่เลือก
     const [result] = await db.query(
       'UPDATE activities SET details = ?, file_paths = ?, image_paths = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? LIMIT 1',
       [details, updatedFilePaths, updatedImagePaths, id]
@@ -638,67 +638,19 @@ app.put('/api/activities/:id', upload.fields([{ name: 'files' }, { name: 'images
   }
 });
 
-// เพิ่ม endpoint สำหรับลบกิจกรรม
-app.delete('/api/activities/:id/:systemId/:importantInfo', async (req, res) => {
-  const { id, systemId, importantInfo } = req.params;
+
+app.delete('/api/activities/:id', async (req, res) => {
+  const { id } = req.params;
 
   try {
-    // ตรวจสอบว่ามีกิจกรรมนี้อยู่จริงหรือไม่
-    const [activity] = await db.query(
-      'SELECT * FROM activities WHERE id = ? AND system_id = ? AND important_info = ?',
-      [id, systemId, importantInfo]
-    );
-    
-    if (!activity || activity.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "ไม่พบข้อมูลกิจกรรมที่ต้องการลบ"
-      });
+    const [result] = await db.query('DELETE FROM activities WHERE id = ?', [id]);
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ message: 'Activity not found' });
     }
-
-    // ลบไฟล์ที่เกี่ยวข้อง
-    if (activity[0].file_paths) {
-      const filePaths = activity[0].file_paths.split(',');
-      filePaths.forEach(filePath => {
-        const fullPath = path.join(__dirname, '..', filePath.trim());
-        if (fs.existsSync(fullPath)) {
-          fs.unlinkSync(fullPath);
-        }
-      });
-    }
-
-    if (activity[0].image_paths) {
-      const imagePaths = activity[0].image_paths.split(',');
-      imagePaths.forEach(imagePath => {
-        const fullPath = path.join(__dirname, '..', imagePath.trim());
-        if (fs.existsSync(fullPath)) {
-          fs.unlinkSync(fullPath);
-        }
-      });
-    }
-
-    // ลบข้อมูลในฐานข้อมูลเฉพาะรายการที่เลือก
-    const [result] = await db.query(
-      'DELETE FROM activities WHERE id = ? AND system_id = ? AND important_info = ? LIMIT 1',
-      [id, systemId, importantInfo]
-    );
-
-    if (result.affectedRows > 0) {
-      res.json({
-        success: true,
-        message: "ลบข้อมูลสำเร็จ"
-      });
-    } else {
-      throw new Error("ไม่สามารถลบข้อมูลได้");
-    }
-
+    res.json({ message: 'Activity deleted successfully' });
   } catch (error) {
     console.error('Error deleting activity:', error);
-    res.status(500).json({
-      success: false,
-      message: "เกิดข้อผิดพลาดในการลบข้อมูล",
-      error: error.message
-    });
+    res.status(500).json({ error: 'Failed to delete activity' });
   }
 });
 
