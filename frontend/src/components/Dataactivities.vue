@@ -95,7 +95,7 @@
               <td>
                 <input
                   v-if="activity.editing"
-                  v-model="activity.editedInfo.details"
+                  v-model="editedDetails"
                   type="text"
                   class="edit-input-same-cell"
                   :style="{ height: activity.editing ? '100%' : 'auto' }"
@@ -407,42 +407,41 @@ export default {
       });
     },
 
-    async saveEdit() {
+    async saveEdit(activity) {
       try {
-        // หาข้อมูลที่กำลังแก้ไข
-        const activity = this.activities.find(a => a.id === this.editingId);
-        if (!activity) {
-          throw new Error("ไม่พบข้อมูลกิจกรรมที่ต้องการแก้ไข");
-        }
-
-        // ตรวจสอบข้อมูลที่จำเป็น
         if (!this.editedDetails.trim()) {
           throw new Error("กรุณากรอกรายละเอียด");
         }
 
         const formData = new FormData();
         formData.append('details', this.editedDetails);
+        formData.append('systemId', activity.system_id);
+        formData.append('importantInfo', activity.important_info);
 
         // จัดการไฟล์ใหม่
-        if (this.newFiles.length > 0) {
-          this.newFiles.forEach(file => {
+        if (activity.newFiles) {
+          activity.newFiles.forEach(file => {
             formData.append('files', file);
           });
         }
 
         // จัดการรูปภาพใหม่
-        if (this.newImages.length > 0) {
-          this.newImages.forEach(image => {
+        if (activity.newImages) {
+          activity.newImages.forEach(image => {
             formData.append('images', image);
           });
         }
 
         // จัดการไฟล์และรูปภาพที่ต้องการลบ
-        formData.append('removedFiles', JSON.stringify(this.removedFiles));
-        formData.append('removedImages', JSON.stringify(this.removedImages));
+        if (activity.removedFiles) {
+          formData.append('removedFiles', JSON.stringify(activity.removedFiles));
+        }
+        if (activity.removedImages) {
+          formData.append('removedImages', JSON.stringify(activity.removedImages));
+        }
 
         const response = await axios.put(
-          `http://localhost:8088/api/activities/${this.editingId}`,
+          `http://localhost:8088/api/activities/${activity.id}`,
           formData,
           {
             headers: {
@@ -459,8 +458,17 @@ export default {
           activity.updated_at = new Date().toISOString();
           activity.editing = false;
 
+          // ล้างข้อมูลการแก้ไข
+          delete activity.editedInfo;
+          delete activity.newFiles;
+          delete activity.newImages;
+          delete activity.removedFiles;
+          delete activity.removedImages;
+
+          this.editingId = null;
+          this.editedDetails = "";
+
           this.toast.success("บันทึกการแก้ไขสำเร็จ");
-          this.cancelEdit();
         } else {
           throw new Error(response.data.message || "ไม่สามารถบันทึกการแก้ไขได้");
         }
