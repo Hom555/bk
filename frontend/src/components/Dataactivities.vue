@@ -111,6 +111,14 @@
                     multiple
                     class="file-input"
                   />
+                  <div v-if="activity.file_paths" class="existing-files">
+                    <div v-for="filePath in activity.file_paths.split(',')" :key="filePath" class="file-item">
+                      <span>{{ getFileName(filePath) }}</span>
+                      <button @click="removeExistingFile(activity, filePath)" class="remove-btn">
+                        <i class="fas fa-times"></i>
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <div v-else class="file-list">
                   <template v-if="activity.file_paths">
@@ -137,6 +145,14 @@
                     accept="image/*"
                     class="file-input"
                   />
+                  <div v-if="activity.image_paths" class="existing-files">
+                    <div v-for="imagePath in activity.image_paths.split(',')" :key="imagePath" class="file-item">
+                      <img :src="`http://localhost:8088${imagePath}`" class="thumbnail" />
+                      <button @click="removeExistingImage(activity, imagePath)" class="remove-btn">
+                        <i class="fas fa-times"></i>
+                      </button>
+                    </div>
+                  </div>
                 </div>
                 <div v-else class="image-list">
                   <template v-if="activity.image_paths">
@@ -520,11 +536,29 @@ export default {
       const validImages = files.filter(file => file.type.startsWith('image/'));
       if (validImages.length !== files.length) {
         this.toast.error("กรุณาเลือกไฟล์รูปภาพเท่านั้น");
+        event.target.value = '';
         return;
       }
       activity.newImages = validImages;
       activity.removedImages = [];
     },
+
+    removeSelectedFile(activity, index) {
+      activity.newFiles.splice(index, 1);
+      if (activity.newFiles.length === 0) {
+        const fileInput = this.$el.querySelector('.file-input');
+        if (fileInput) fileInput.value = '';
+      }
+    },
+
+    removeSelectedImage(activity, index) {
+      activity.newImages.splice(index, 1);
+      if (activity.newImages.length === 0) {
+        const imageInput = this.$el.querySelector('.file-input');
+        if (imageInput) imageInput.value = '';
+      }
+    },
+
     async fetchSystemDetails() {
       if (!this.selectedSystemId) {
         this.importantInfoList = [];
@@ -545,6 +579,34 @@ export default {
         console.error("Error:", error);
         this.toast.error("ไม่สามารถดึงข้อมูลสำคัญได้");
       }
+    },
+
+    // เพิ่มเมธอดสำหรับลบไฟล์ที่มีอยู่
+    removeExistingFile(activity, filePath) {
+      if (!activity.removedFiles) {
+        activity.removedFiles = [];
+      }
+      activity.removedFiles.push(filePath);
+      
+      // อัพเดท file_paths โดยลบไฟล์ที่เลือกออก
+      const currentFiles = activity.file_paths.split(',');
+      activity.file_paths = currentFiles
+        .filter(path => path !== filePath)
+        .join(',');
+    },
+
+    // เพิ่มเมธอดสำหรับลบรูปภาพที่มีอยู่
+    removeExistingImage(activity, imagePath) {
+      if (!activity.removedImages) {
+        activity.removedImages = [];
+      }
+      activity.removedImages.push(imagePath);
+      
+      // อัพเดท image_paths โดยลบรูปภาพที่เลือกออก
+      const currentImages = activity.image_paths.split(',');
+      activity.image_paths = currentImages
+        .filter(path => path !== imagePath)
+        .join(',');
     },
   },
   watch: {
@@ -1168,6 +1230,70 @@ table td:nth-child(5) {
   padding: 12px;
   max-height: 250px;
   overflow-y: auto;
+}
+
+.selected-files {
+  margin-top: 10px;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  margin: 5px 0;
+  padding: 5px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+}
+
+.file-item span {
+  flex: 1;
+  margin-right: 10px;
+  font-size: 0.9em;
+}
+
+.remove-btn {
+  background: none;
+  border: none;
+  color: #dc3545;
+  cursor: pointer;
+  padding: 2px 5px;
+}
+
+.remove-btn:hover {
+  color: #c82333;
+}
+
+.existing-files {
+  margin-top: 10px;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 5px 0;
+  padding: 8px;
+  background-color: #f5f5f5;
+  border-radius: 4px;
+}
+
+.thumbnail {
+  width: 50px;
+  height: 50px;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.remove-btn {
+  background: none;
+  border: none;
+  color: #dc3545;
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
+.remove-btn:hover {
+  color: #c82333;
 }
 
 @media (max-width: 768px) {

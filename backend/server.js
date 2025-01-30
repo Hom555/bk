@@ -219,20 +219,36 @@ app.get('/api/system-records', async (req, res) => {
 
 app.post('/api/system-details', upload.array('files'), async (req, res) => {
   try {
-    const { systemId, importantInfo, referenceNo, additionalInfo } = req.body;
+    const { systemId, importantInfo, referenceNo, additionalInfo, dept_change_code, dept_full } = req.body;
     const files = req.files;
 
     if (!systemId || !importantInfo || !referenceNo) {
-      return res.status(400).json({ message: 'กรุณากรอกข้อมูลให้ครบถ้วน' });
+      return res.status(400).json({ 
+        success: false,
+        message: 'กรุณากรอกข้อมูลให้ครบถ้วน' 
+      });
     }
 
     let filePath = '';
     if (files && files.length > 0) {
-      filePath = files.map(file => file.path).join(', ');
+      filePath = files.map(file => `/uploads/${file.filename}`).join(',');
     }
 
-    const query = 'INSERT INTO system_details (system_id, important_info, reference_no, file_path, additional_info) VALUES (?, ?, ?, ?, ?)';
-    const values = [systemId, importantInfo, referenceNo, filePath, additionalInfo];
+    const query = `
+      INSERT INTO system_details 
+      (system_id, important_info, reference_no, file_path, additional_info, dept_change_code, dept_full) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const values = [
+      systemId, 
+      importantInfo, 
+      referenceNo, 
+      filePath, 
+      additionalInfo || '',
+      dept_change_code,
+      dept_full
+    ];
 
     const [result] = await db.query(query, values);
     
@@ -251,24 +267,24 @@ app.post('/api/system-details', upload.array('files'), async (req, res) => {
     return res.status(500).json({ 
       success: false,
       message: 'เกิดข้อผิดพลาดในการบันทึกข้อมูล',
-      error: error.message 
+      error: error.message
     });
   }
 });
 
 app.get('/api/system-details/:systemId', async (req, res) => {
   const { systemId } = req.params;
-
-  const query = `
-    SELECT * FROM system_details 
-    WHERE system_id = ?
-    ORDER BY created_at DESC
-  `;
-
+  
   try {
-    const [rows] = await db.query(query, [systemId]);
-    console.log('Fetched system details:', rows);
-    res.status(200).json(rows);
+    const [details] = await db.query(`
+      SELECT sd.*, sm.dept_change_code, sm.dept_full
+      FROM system_details sd
+      LEFT JOIN system_master sm ON sd.system_id = sm.id
+      WHERE sd.system_id = ?
+      ORDER BY sd.created_at DESC
+    `, [systemId]);
+
+    res.json(details);
   } catch (error) {
     console.error('Error fetching system details:', error);
     res.status(500).json({ error: 'Internal server error' });
