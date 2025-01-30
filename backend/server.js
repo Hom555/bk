@@ -5,6 +5,7 @@ const multer = require('multer');
 const bodyParser = require('body-parser');
 const path = require('path');
 const fs = require('fs');
+const axios = require('axios');
 const app = express();
 const port = 8088;
 
@@ -149,17 +150,50 @@ db.on('error', async (err) => {
 app.post('/api/system-record', async (req, res) => {
   const { nameTH, nameEN } = req.body;
 
-  if (!nameTH || !nameEN) {
-    return res.status(400).send({ message: 'กรุณากรอกชื่อภาษาไทยและภาษาอังกฤษ' });
-  }
-
-  const query = 'INSERT INTO system_master (name_th, name_en)  VALUES (?, ?)';
   try {
-    const [result] = await db.query(query, [nameTH, nameEN]);
-    res.status(200).send({ message: 'บันทึกข้อมูลสำเร็จ', id: result.insertId });
+    // ตรวจสอบข้อมูลที่จำเป็น
+    if (!nameTH || !nameEN) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'กรุณากรอกชื่อภาษาไทยและภาษาอังกฤษ' 
+      });
+    }
+
+    // ดึงข้อมูลแผนกจาก API ภายนอก
+    const deptResponse = await axios.get('http://localhost:3004/api/data');
+    const deptInfo = deptResponse.data?.data?.dataDetail[0];
+
+    if (!deptInfo?.dept_change_code || !deptInfo?.dept_full) {
+      throw new Error('ไม่พบข้อมูลแผนก');
+    }
+
+    // บันทึกข้อมูลลงฐานข้อมูล
+    const query = `
+      INSERT INTO system_master 
+      (name_th, name_en, dept_change_code, dept_full) 
+      VALUES (?, ?, ?, ?)
+    `;
+
+    const [result] = await db.execute(query, [
+      nameTH,
+      nameEN,
+      deptInfo.dept_change_code,
+      deptInfo.dept_full
+    ]);
+
+    res.status(200).json({ 
+      success: true,
+      message: 'บันทึกข้อมูลสำเร็จ', 
+      id: result.insertId 
+    });
+
   } catch (error) {
     console.error('Error saving record:', error);
-    res.status(500).send({ message: 'ไม่สามารถบันทึกข้อมูลได้' });
+    res.status(500).json({ 
+      success: false,
+      message: 'ไม่สามารถบันทึกข้อมูลได้',
+      error: error.message 
+    });
   }
 });
 
@@ -217,41 +251,81 @@ app.get('/api/system-records', async (req, res) => {
   }
 });
 
-app.post('/api/system-details', upload.array('files'), async (req, res) => {
+app.post('/api/system-details', upload.array('files', 10), async (req, res) => {
+  const { systemId, importantInfo, referenceNo, additionalInfo } = req.body;
+  const files = req.files || [];
+
   try {
-    const { systemId, importantInfo, referenceNo, additionalInfo } = req.body;
-    const files = req.files;
-
+    // ตรวจสอบข้อมูลที่จำเป็น
     if (!systemId || !importantInfo || !referenceNo) {
-      return res.status(400).json({ message: 'กรุณากรอกข้อมูลให้ครบถ้วน' });
-    }
-
-    let filePath = '';
-    if (files && files.length > 0) {
-      filePath = files.map(file => file.path).join(', ');
-    }
-
-    const query = 'INSERT INTO system_details (system_id, important_info, reference_no, file_path, additional_info) VALUES (?, ?, ?, ?, ?)';
-    const values = [systemId, importantInfo, referenceNo, filePath, additionalInfo];
-
-    const [result] = await db.query(query, values);
-    
-    if (result.affectedRows > 0) {
-      console.log('Data saved successfully:', result);
-      return res.status(200).json({ 
-        success: true,
-        message: 'บันทึกข้อมูลสำเร็จ!',
-        data: result 
+      return res.status(400).json({ 
+        success: false,
+        message: 'กรุณากรอกข้อมูลที่จำเป็น' 
       });
-    } else {
-      throw new Error('ไม่สามารถบันทึกข้อมูลได้');
     }
+
+    // ดึงข้อมูลแผนกจากระบบ
+    const [system] = await db.query(
+      'SELECT dept_change_code, dept_full FROM system_master WHERE id = ?',
+      [systemId]
+    );
+
+    if (system.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "ไม่พบข้อมูลระบบ"
+      });
+    }
+
+    // เตรียมพาธของไฟล์
+    const filePaths = files.map(file => `/uploads/${file.filename}`).join(',');
+
+    // บันทึกข้อมูลลงฐานข้อมูล
+    const query = `
+      INSERT INTO system_details 
+      (system_id, important_info, reference_no, additional_info, file_path, dept_change_code, dept_full) 
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    const [result] = await db.execute(query, [
+      systemId,
+      importantInfo,
+      referenceNo,
+      additionalInfo || '',
+      filePaths,
+      system[0].dept_change_code,
+      system[0].dept_full
+    ]);
+
+    res.status(200).json({
+      success: true,
+      message: 'บันทึกข้อมูลสำเร็จ',
+      data: {
+        id: result.insertId,
+        systemId,
+        importantInfo,
+        referenceNo,
+        additionalInfo,
+        file_path: filePaths,
+        dept_change_code: system[0].dept_change_code,
+        dept_full: system[0].dept_full
+      }
+    });
+
   } catch (error) {
     console.error('Error saving system details:', error);
-    return res.status(500).json({ 
+    // ลบไฟล์ที่อัปโหลดในกรณีที่เกิดข้อผิดพลาด
+    if (files.length > 0) {
+      files.forEach(file => {
+        fs.unlink(file.path, (err) => {
+          if (err) console.error('Error deleting file:', err);
+        });
+      });
+    }
+    res.status(500).json({
       success: false,
-      message: 'เกิดข้อผิดพลาดในการบันทึกข้อมูล',
-      error: error.message 
+      message: 'ไม่สามารถบันทึกข้อมูลได้',
+      error: error.message
     });
   }
 });
@@ -571,7 +645,7 @@ app.get('/api/activities/current-month', async (req, res) => {
 
 app.put('/api/activities/:id', upload.fields([{ name: 'files' }, { name: 'images' }]), async (req, res) => {
   const { id } = req.params;
-  const { details, removedFiles, removedImages } = req.body;
+  const { details, systemId, importantInfo, removedFiles, removedImages } = req.body;
   const files = req.files?.['files'] || [];
   const images = req.files?.['images'] || [];
 
@@ -589,6 +663,19 @@ app.put('/api/activities/:id', upload.fields([{ name: 'files' }, { name: 'images
       });
     }
 
+    // ดึงข้อมูลแผนกจากระบบ
+    const [system] = await db.query(
+      'SELECT dept_change_code, dept_full FROM system_master WHERE id = ?',
+      [systemId || existingActivity[0].system_id]
+    );
+
+    if (system.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "ไม่พบข้อมูลระบบ"
+      });
+    }
+
     // จัดการไฟล์และรูปภาพที่ต้องการลบ
     let currentFiles = existingActivity[0].file_paths ? existingActivity[0].file_paths.split(',') : [];
     let currentImages = existingActivity[0].image_paths ? existingActivity[0].image_paths.split(',') : [];
@@ -596,11 +683,25 @@ app.put('/api/activities/:id', upload.fields([{ name: 'files' }, { name: 'images
     if (removedFiles) {
       const filesToRemove = JSON.parse(removedFiles);
       currentFiles = currentFiles.filter(file => !filesToRemove.includes(file));
+      // ลบไฟล์จริงจากระบบ
+      filesToRemove.forEach(filePath => {
+        const fullPath = path.join(__dirname, filePath);
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+        }
+      });
     }
 
     if (removedImages) {
       const imagesToRemove = JSON.parse(removedImages);
       currentImages = currentImages.filter(image => !imagesToRemove.includes(image));
+      // ลบรูปภาพจริงจากระบบ
+      imagesToRemove.forEach(imagePath => {
+        const fullPath = path.join(__dirname, imagePath);
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+        }
+      });
     }
 
     // เพิ่มไฟล์และรูปภาพใหม่
@@ -611,10 +712,28 @@ app.put('/api/activities/:id', upload.fields([{ name: 'files' }, { name: 'images
     const updatedFilePaths = [...currentFiles, ...newFilePaths].filter(Boolean).join(',');
     const updatedImagePaths = [...currentImages, ...newImagePaths].filter(Boolean).join(',');
 
-    // อัพเดทข้อมูลเฉพาะรายการที่เลือก
+    // อัพเดทข้อมูล
     const [result] = await db.query(
-      'UPDATE activities SET details = ?, file_paths = ?, image_paths = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? LIMIT 1',
-      [details, updatedFilePaths, updatedImagePaths, id]
+      `UPDATE activities 
+       SET details = ?, 
+           file_paths = ?, 
+           image_paths = ?, 
+           system_id = ?,
+           important_info = ?,
+           dept_change_code = ?,
+           dept_full = ?,
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE id = ?`,
+      [
+        details, 
+        updatedFilePaths, 
+        updatedImagePaths, 
+        systemId || existingActivity[0].system_id,
+        importantInfo || existingActivity[0].important_info,
+        system[0].dept_change_code,
+        system[0].dept_full,
+        id
+      ]
     );
 
     if (result.affectedRows > 0) {
@@ -630,6 +749,12 @@ app.put('/api/activities/:id', upload.fields([{ name: 'files' }, { name: 'images
 
   } catch (error) {
     console.error('Error updating activity:', error);
+    // ลบไฟล์ใหม่ที่อัปโหลดในกรณีที่เกิดข้อผิดพลาด
+    [...(files || []), ...(images || [])].forEach(file => {
+      fs.unlink(file.path, (err) => {
+        if (err) console.error('Error deleting file:', err);
+      });
+    });
     res.status(500).json({
       success: false,
       message: "เกิดข้อผิดพลาดในการแก้ไขข้อมูล",
