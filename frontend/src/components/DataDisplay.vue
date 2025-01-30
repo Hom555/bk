@@ -125,6 +125,32 @@
         <div v-else-if="selectedSystemId" class="no-data">ไม่พบข้อมูล</div>
       </div>
     </div>
+
+    <!-- Dialog ยืนยันการลบ -->
+    <div v-if="showDeleteConfirm" class="delete-confirm-overlay">
+      <div class="delete-confirm-dialog">
+        <div class="dialog-header">
+          <i class="fas fa-exclamation-triangle warning-icon"></i>
+          <h3>ยืนยันการลบข้อมูล</h3>
+        </div>
+        
+        <div class="dialog-content">
+          <p>คุณต้องการลบข้อมูลของระบบ "{{ getSystemName(recordToDelete?.system_id) }}" ใช่หรือไม่?</p>
+          <p class="warning-text">การดำเนินการนี้ไม่สามารถยกเลิกได้</p>
+        </div>
+
+        <div class="dialog-actions">
+          <button @click="cancelDelete" class="btn-cancel">
+            <i class="fas fa-times"></i>
+            ยกเลิก
+          </button>
+          <button @click="handleDelete" class="btn-confirm-delete">
+            <i class="fas fa-trash-alt"></i>
+            ยืนยันการลบ
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -145,6 +171,8 @@ export default {
       systemDetails: [],
       searchQuery: "",
       deptInfo: null,
+      showDeleteConfirm: false,
+      recordToDelete: null
     };
   },
   computed: {
@@ -270,55 +298,45 @@ export default {
         return "Unknown file";
       }
     },
-    confirmDelete(detail) {
-      const confirmed = window.confirm('คุณต้องการลบข้อมูลนี้ใช่หรือไม่?');
-      if (confirmed) {
-        this.deleteDetail(detail);
-      }
+    confirmDelete(record) {
+      this.recordToDelete = record;
+      this.showDeleteConfirm = true;
     },
-    async deleteDetail(detail) {
+    cancelDelete() {
+      this.recordToDelete = null;
+      this.showDeleteConfirm = false;
+    },
+    async handleDelete() {
+      if (!this.recordToDelete) return;
+
       try {
         const response = await axios.delete(
-          `http://localhost:8088/api/system-details/${detail.id}`
+          `http://localhost:8088/api/system-details/${this.recordToDelete.id}/${this.recordToDelete.system_id}/${this.recordToDelete.important_info}`
         );
 
-        if (response.status === 200) {
+        if (response.data.success) {
+          this.toast.success('ลบข้อมูลสำเร็จ');
           this.systemDetails = this.systemDetails.filter(
-            item => item.id !== detail.id
+            detail => detail.id !== this.recordToDelete.id
           );
-          
-          this.toast.error("ลบข้อมูลสำเร็จ", {
-            position: "top-right",
-            timeout: 3000,
-            closeOnClick: true,
-            pauseOnHover: true,
-            draggable: true,
-            type: "error",
-            theme: "colored",
-            backgroundColor: "#dc3545",
-            icon: "❌"
-          });
         }
       } catch (error) {
-        console.error("Error:", error);
-        this.toast.error("ไม่สามารถลบข้อมูลได้", {
-          position: "top-right",
-          timeout: 3000,
-          closeOnClick: true,
-          pauseOnHover: true,
-          draggable: true,
-          type: "error",
-          theme: "colored",
-          backgroundColor: "#dc3545",
-          icon: "⚠️"
-        });
+        console.error('Error:', error);
+        this.toast.error('ไม่สามารถลบข้อมูลได้');
+      } finally {
+        this.showDeleteConfirm = false;
+        this.recordToDelete = null;
       }
     },
     async refreshData() {
       if (this.selectedSystemId) {
         await this.fetchSystemDetails();
       }
-    }
+    },
+    getSystemName(systemId) {
+      const system = this.systems.find(s => s.id === systemId);
+      return system ? system.name_th : '';
+    },
   },
   watch: {
     selectedSystemId() {
@@ -606,5 +624,87 @@ td {
   transition: all 0.3s ease;
   padding: 12px 15px;
   vertical-align: middle;
+}
+
+.delete-confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.delete-confirm-dialog {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.warning-icon {
+  color: #f59e0b;
+  font-size: 24px;
+}
+
+.dialog-content {
+  margin-bottom: 24px;
+}
+
+.warning-text {
+  color: #dc2626;
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.btn-cancel,
+.btn-confirm-delete {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-cancel {
+  background: #f3f4f6;
+  color: #4b5563;
+  border: 1px solid #e5e7eb;
+}
+
+.btn-confirm-delete {
+  background: #dc2626;
+  color: white;
+  border: none;
+}
+
+.btn-cancel:hover {
+  background: #e5e7eb;
+}
+
+.btn-confirm-delete:hover {
+  background: #b91c1c;
 }
 </style>

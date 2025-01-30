@@ -200,6 +200,33 @@
       <i class="fas fa-inbox"></i>
       <p>ไม่พบข้อมูลกิจกรรม</p>
     </div>
+
+    <!-- Dialog ยืนยันการลบ -->
+    <div v-if="showDeleteConfirm" class="delete-confirm-overlay">
+      <div class="delete-confirm-dialog">
+        <div class="dialog-header">
+          <i class="fas fa-exclamation-triangle warning-icon"></i>
+          <h3>ยืนยันการลบกิจกรรม</h3>
+        </div>
+        
+        <div class="dialog-content">
+          <p>คุณต้องการลบกิจกรรมของระบบ "{{ getSystemName(activityToDelete?.system_id) }}" ใช่หรือไม่?</p>
+          <p class="activity-details">รายละเอียด: {{ getActivityDetails(activityToDelete?.details) }}</p>
+          <p class="warning-text">การดำเนินการนี้ไม่สามารถยกเลิกได้</p>
+        </div>
+
+        <div class="dialog-actions">
+          <button @click="cancelDelete" class="btn-cancel">
+            <i class="fas fa-times"></i>
+            ยกเลิก
+          </button>
+          <button @click="handleDelete" class="btn-confirm-delete">
+            <i class="fas fa-trash-alt"></i>
+            ยืนยันการลบ
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -230,7 +257,9 @@ export default {
       newFiles: [],
       newImages: [],
       removedFiles: [],
-      removedImages: []
+      removedImages: [],
+      showDeleteConfirm: false,
+      activityToDelete: null
     };
   },
   methods: {
@@ -331,12 +360,16 @@ export default {
       window.open(imageUrl, '_blank');
     },
     getSystemName(systemId) {
-      const system = this.system.find(s => s.id === parseInt(systemId));
-      return system ? `${system.name_th}-${system.name_en}` : '';
+      const system = this.system.find(s => s.id === systemId);
+      return system ? system.name_th : '';
     },
     getImportantInfo(infoId) {
       const info = this.importantInfoList.find(i => i.id === infoId);
       return info ? info.important_info : '';
+    },
+    getActivityDetails(details) {
+      if (!details) return '';
+      return details.length > 50 ? details.substring(0, 50) + '...' : details;
     },
     async editActivity(activity) {
       try {
@@ -390,8 +423,31 @@ export default {
       }
     },
     async confirmDelete(activity) {
-      if (confirm(`ต้องการลบกิจกรรม "${activity.details.substring(0, 50)}..." ใช่หรือไม่?`)) {
-        await this.deleteActivity(activity.id);
+      this.activityToDelete = activity;
+      this.showDeleteConfirm = true;
+    },
+    cancelDelete() {
+      this.activityToDelete = null;
+      this.showDeleteConfirm = false;
+    },
+    async handleDelete() {
+      if (!this.activityToDelete) return;
+
+      try {
+        const response = await axios.delete(
+          `http://localhost:8088/api/activities/${this.activityToDelete.id}/${this.activityToDelete.system_id}/${this.activityToDelete.important_info}`
+        );
+
+        if (response.data.success) {
+          this.toast.success('ลบข้อมูลกิจกรรมสำเร็จ');
+          await this.fetchActivities();
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        this.toast.error('ไม่สามารถลบข้อมูลได้');
+      } finally {
+        this.showDeleteConfirm = false;
+        this.activityToDelete = null;
       }
     },
     startEdit(activity) {
@@ -1349,5 +1405,96 @@ table td:nth-child(5) {
     padding: 12px 8px;
     font-size: 0.9rem;
   }
+}
+
+.delete-confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.delete-confirm-dialog {
+  background: white;
+  border-radius: 12px;
+  padding: 24px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.warning-icon {
+  color: #f59e0b;
+  font-size: 24px;
+}
+
+.dialog-content {
+  margin-bottom: 24px;
+}
+
+.warning-text {
+  color: #dc2626;
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 16px;
+}
+
+.btn-cancel,
+.btn-confirm-delete {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px;
+  min-width: 120px;
+  justify-content: center;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-cancel {
+  background: #f3f4f6;
+  color: #4b5563;
+  border: 1px solid #e5e7eb;
+}
+
+.btn-confirm-delete {
+  background: #dc2626;
+  color: white;
+  border: none;
+}
+
+.btn-cancel:hover {
+  background: #e5e7eb;
+}
+
+.btn-confirm-delete:hover {
+  background: #b91c1c;
+}
+
+.activity-details {
+  color: #4b5563;
+  font-size: 14px;
+  margin: 8px 0;
+  font-style: italic;
 }
 </style>

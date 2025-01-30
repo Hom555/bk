@@ -118,6 +118,31 @@
         </form>
       </div>
     </div>
+
+    <div v-if="showDeleteConfirm" class="delete-confirm-overlay">
+      <div class="delete-confirm-dialog">
+        <div class="dialog-header">
+          <i class="fas fa-exclamation-triangle warning-icon"></i>
+          <h3>ยืนยันการลบข้อมูล</h3>
+        </div>
+        
+        <div class="dialog-content">
+          <p>คุณต้องการลบระบบ "{{ recordToDelete?.name_th }}" ใช่หรือไม่?</p>
+          <p class="warning-text">การดำเนินการนี้ไม่สามารถยกเลิกได้</p>
+        </div>
+
+        <div class="dialog-actions">
+          <button @click="cancelDelete" class="btn-cancel">
+            <i class="fas fa-times"></i>
+            ยกเลิก
+          </button>
+          <button @click="handleDelete" class="btn-confirm-delete">
+            <i class="fas fa-trash-alt"></i>
+            ยืนยันการลบ
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -142,7 +167,9 @@ export default {
       deptInfo: null,
       nameTH: "",
       nameEN: "",
-      isSubmitting: false
+      isSubmitting: false,
+      showDeleteConfirm: false,
+      recordToDelete: null
     };
   },
   computed: {
@@ -221,9 +248,32 @@ export default {
       this.nameTH = "";
       this.nameEN = "";
     },
-    async confirmDelete(record) {
-      if (confirm(`ต้องการลบระบบ "${record.name_th}" ใช่หรือไม่?`)) {
-        await this.deleteRecord(record.id);
+    confirmDelete(record) {
+      this.recordToDelete = record;
+      this.showDeleteConfirm = true;
+    },
+    cancelDelete() {
+      this.recordToDelete = null;
+      this.showDeleteConfirm = false;
+    },
+    async handleDelete() {
+      if (!this.recordToDelete) return;
+
+      try {
+        const response = await axios.delete(
+          `http://localhost:8088/api/system-record/${this.recordToDelete.id}`
+        );
+
+        if (response.data.message === 'ลบข้อมูลสำเร็จ') {
+          this.toast.success('ลบข้อมูลสำเร็จ');
+          await this.fetchSystemRecords();
+        }
+      } catch (error) {
+        console.error('Error:', error);
+        this.toast.error('ไม่สามารถลบข้อมูลได้');
+      } finally {
+        this.showDeleteConfirm = false;
+        this.recordToDelete = null;
       }
     },
     showAddForm() {
@@ -615,5 +665,87 @@ label {
 
 .th-dept {
   width: 30%;
+}
+
+.delete-confirm-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.delete-confirm-dialog {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.warning-icon {
+  color: #f59e0b;
+  font-size: 24px;
+}
+
+.dialog-content {
+  margin-bottom: 24px;
+}
+
+.warning-text {
+  color: #dc2626;
+  font-size: 14px;
+  margin-top: 8px;
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.btn-cancel,
+.btn-confirm-delete {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-cancel {
+  background: #f3f4f6;
+  color: #4b5563;
+  border: 1px solid #e5e7eb;
+}
+
+.btn-confirm-delete {
+  background: #dc2626;
+  color: white;
+  border: none;
+}
+
+.btn-cancel:hover {
+  background: #e5e7eb;
+}
+
+.btn-confirm-delete:hover {
+  background: #b91c1c;
 }
 </style>

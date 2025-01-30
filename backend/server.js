@@ -393,25 +393,57 @@ app.put('/api/system-details/:id', upload.array('files', 10), async (req, res) =
   }
 });
 
-app.delete('/api/system-details/:id', async (req, res) => {
-  const detailId = req.params.id;
-  
+app.delete('/api/system-details/:id/:systemId/:importantInfo', async (req, res) => {
+  const { id, systemId, importantInfo } = req.params;
+
   try {
-    const [result] = await db.query(
-      'DELETE FROM system_details WHERE id = ?',
-      [detailId]
+    // ตรวจสอบว่ามีข้อมูลที่ต้องการลบหรือไม่
+    const [details] = await db.query(
+      'SELECT * FROM system_details WHERE id = ? AND system_id = ? AND important_info = ?',
+      [id, systemId, importantInfo]
     );
 
-    if (result.affectedRows > 0) {
-      console.log('Deleted successfully:', detailId);
-      res.status(200).json({ message: 'ลบข้อมูลสำเร็จ' });
-    } else {
-      console.log('Record not found:', detailId);
-      res.status(404).json({ error: 'ไม่พบข้อมูลที่ต้องการลบ' });
+    if (!details || details.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'ไม่พบข้อมูลที่ต้องการลบ'
+      });
     }
+
+    // ลบไฟล์ที่เกี่ยวข้อง (ถ้ามี)
+    const detail = details[0];
+    if (detail.file_paths) {
+      const filePaths = detail.file_paths.split(',').filter(Boolean);
+      for (const filePath of filePaths) {
+        const fullPath = path.join(__dirname, filePath);
+        if (fs.existsSync(fullPath)) {
+          fs.unlinkSync(fullPath);
+        }
+      }
+    }
+
+    // ลบข้อมูลจากฐานข้อมูล
+    const [result] = await db.query(
+      'DELETE FROM system_details WHERE id = ? AND system_id = ? AND important_info = ?',
+      [id, systemId, importantInfo]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error('ไม่สามารถลบข้อมูลได้');
+    }
+
+    res.json({
+      success: true,
+      message: 'ลบข้อมูลสำเร็จ'
+    });
+
   } catch (error) {
-    console.error('Error deleting:', error);
-    res.status(500).json({ error: 'ไม่สามารถลบข้อมูลได้' });
+    console.error('Error deleting system detail:', error);
+    res.status(500).json({
+      success: false,
+      message: 'เกิดข้อผิดพลาดในการลบข้อมูล',
+      error: error.message
+    });
   }
 });
 
