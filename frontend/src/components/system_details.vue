@@ -96,8 +96,8 @@
                 />
               </div>
               <!-- แสดงไฟล์ที่เลือก -->
-              <div v-if="files && files.length > 0" class="selected-files">
-                <div v-for="(file, index) in files" :key="index" class="file-item">
+              <div v-if="selectedFiles.length > 0" class="selected-files">
+                <div v-for="(file, index) in selectedFiles" :key="index" class="file-item">
                   <i class="fas fa-file"></i>
                   <span class="file-name">{{ file.name }}</span>
                   <button type="button" @click="removeFile(index)" class="remove-file">
@@ -141,7 +141,7 @@ export default {
       importantInfo: "",
       referenceNo: "",
       additionalInfo: "",
-      files: null,
+      selectedFiles: [],
       deptInfo: null,
       isSubmitting: false
     };
@@ -177,7 +177,8 @@ export default {
     },
 
     handleFileUpload(event) {
-      this.files = event.target.files;
+      const files = Array.from(event.target.files || []);
+      this.selectedFiles = [...this.selectedFiles, ...files];
     },
 
     async submitForm() {
@@ -202,11 +203,9 @@ export default {
         formData.append("dept_change_code", this.deptInfo.dept_change_code);
         formData.append("dept_full", this.deptInfo.dept_full);
 
-        if (this.files) {
-          Array.from(this.files).forEach((file) => {
-            formData.append("files", file);
-          });
-        }
+        this.selectedFiles.forEach(file => {
+          formData.append("files", file);
+        });
 
         const response = await axios.post(
           "http://localhost:8088/api/system-details",
@@ -235,16 +234,18 @@ export default {
       this.importantInfo = "";
       this.referenceNo = "";
       this.additionalInfo = "";
-      this.files = null;
+      this.selectedFiles = [];
       if (this.$refs.fileInput) {
         this.$refs.fileInput.value = "";
       }
     },
 
     removeFile(index) {
-      const fileArray = Array.from(this.files);
-      fileArray.splice(index, 1);
-      this.files = new FileList(fileArray);
+      this.selectedFiles.splice(index, 1);
+      
+      if (this.selectedFiles.length === 0 && this.$refs.fileInput) {
+        this.$refs.fileInput.value = "";
+      }
     },
 
     triggerFileInput() {
