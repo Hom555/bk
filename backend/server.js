@@ -153,10 +153,33 @@ app.post('/api/system-record', async (req, res) => {
     return res.status(400).send({ message: 'กรุณากรอกชื่อภาษาไทยและภาษาอังกฤษ' });
   }
 
-  const query = 'INSERT INTO system_master (name_th, name_en)  VALUES (?, ?)';
   try {
-    const [result] = await db.query(query, [nameTH, nameEN]);
+    // ดึงข้อมูลแผนกจากตาราง system_details ล่าสุด
+    const [lastDetail] = await db.query(`
+      SELECT dept_change_code, dept_full 
+      FROM system_details 
+      ORDER BY created_at DESC 
+      LIMIT 1
+    `);
+
+    let dept_change_code = '001';
+    let dept_full = 'แผนกเทคโนโลยีสารสนเทศ';
+
+    // ถ้ามีข้อมูลแผนกล่าสุด ให้ใช้ข้อมูลนั้น
+    if (lastDetail && lastDetail.length > 0) {
+      dept_change_code = lastDetail[0].dept_change_code;
+      dept_full = lastDetail[0].dept_full;
+    }
+
+    const query = `
+      INSERT INTO system_master 
+      (name_th, name_en, dept_change_code, dept_full) 
+      VALUES (?, ?, ?, ?)
+    `;
+
+    const [result] = await db.query(query, [nameTH, nameEN, dept_change_code, dept_full]);
     res.status(200).send({ message: 'บันทึกข้อมูลสำเร็จ', id: result.insertId });
+
   } catch (error) {
     console.error('Error saving record:', error);
     res.status(500).send({ message: 'ไม่สามารถบันทึกข้อมูลได้' });
@@ -183,13 +206,40 @@ app.put('/api/system-record/:id', async (req, res) => {
   const id = req.params.id;
   const { nameTH, nameEN } = req.body;
 
-  const query = 'UPDATE system_master SET name_th = ?, name_en = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?';
   try {
-    const [result] = await db.query(query, [nameTH, nameEN, id]);
+    // ดึงข้อมูลแผนกจากตาราง system_details ล่าสุด
+    const [lastDetail] = await db.query(`
+      SELECT dept_change_code, dept_full 
+      FROM system_details 
+      ORDER BY created_at DESC 
+      LIMIT 1
+    `);
+
+    let dept_change_code = '001';
+    let dept_full = 'แผนกเทคโนโลยีสารสนเทศ';
+
+    if (lastDetail && lastDetail.length > 0) {
+      dept_change_code = lastDetail[0].dept_change_code;
+      dept_full = lastDetail[0].dept_full;
+    }
+
+    const query = `
+      UPDATE system_master 
+      SET name_th = ?, 
+          name_en = ?, 
+          dept_change_code = ?,
+          dept_full = ?,
+          updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ?
+    `;
+
+    const [result] = await db.query(query, [nameTH, nameEN, dept_change_code, dept_full, id]);
+    
     if (result.affectedRows === 0) {
       return res.status(404).send({ message: 'ไม่พบข้อมูลที่ต้องการอัปเดต' });
     }
     res.status(200).send({ message: 'อัปเดตข้อมูลสำเร็จ' });
+
   } catch (error) {
     console.error('Error updating record:', error);
     res.status(500).send({ message: 'ไม่สามารถอัปเดตข้อมูลได้' });
