@@ -4,7 +4,7 @@
     <div class="search-section">
       <div class="search-header">
         <i class="fas fa-search"></i>
-        <h2>ค้นหาก้อมูลกิจกรรม</h2>
+        <h2>ค้นหาข้อมูลกิจกรรม</h2>
       </div>
 
       <div class="search-form">
