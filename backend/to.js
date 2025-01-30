@@ -6,6 +6,7 @@ const axios = require('axios');
 const mysql = require('mysql2/promise');
 
 const app = express();
+const PORT = 3003;
 const SECRET_KEY = "I76iLBG2vrXRc6Y2gqQpT3r9oHDzQHuOaG89S+C2NE0="; // คีย์ลับสำหรับเซ็น Token
 
 app.use(cors());
@@ -192,22 +193,7 @@ app.get('/api/user-info', verifyToken, async (req, res) => {
     }
 });
 
-// เพิ่มฟังก์ชันสำหรับกำหนดสิทธิ์ตามแผนก
-const getDepartmentRole = (deptCode) => {
-    const deptRoles = {
-        // แผนกพัฒนาระบบงานด้านทรัพยากรบุคคล
-        "530105002000300": "Admin",
-        // แผนกพัฒนาระบบงานด้านการเงิน
-        "530105002000301": "User",
-        // แผนกพัฒนาระบบงานด้านบัญชี
-        "530105002000302": "User",
-        // แผนกพัฒนาระบบงานด้านจัดซื้อ
-        "530105002000303": "Superadmin",
-        // ค่าเริ่มต้นสำหรับแผนกอื่นๆ
-        "default": "User"
-    };
-    return deptRoles[deptCode] || deptRoles.default;
-};
+
 
 // API สำหรับการเข้าสู่ระบบและสร้าง Token
 app.post('/login', (req, res) => {
@@ -425,6 +411,6 @@ app.get('/prot', verifyToken, (req, res) => {
 
   
 
-app.listen(3003, () => {
-    console.log('Server running on http://localhost:3003');
+  app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
 });
