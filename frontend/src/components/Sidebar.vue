@@ -26,6 +26,13 @@
           </li>
 
           <li>
+            <router-link to="/UserManual" class="sidebar-link" exact-active-class="active">
+                  <i class="fas fa-book"></i>
+              <span>คู่มือการใช้งาน</span>
+            </router-link>
+          </li>
+
+          <li>
             <div
               class="sidebar-link expandable"
               @click="toggleSubMenu('systemMenu')"

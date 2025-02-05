@@ -9,6 +9,8 @@ import DataDisplay from "./components/DataDisplay.vue";
 import ManageUsers from "./components/ManageUsers.vue";
 import Footer from "./components/Footer.vue";
 import Narbar from "./components/Narbar.vue";
+import UserManual from './components/UserManual.vue';
+
 const routes = [
   {
     path: "/",
@@ -59,6 +61,11 @@ const routes = [
     path: "/narbar",
     name: "/narbar",
     component: Narbar,
+  },
+  {
+    path: '/UserManual',
+    name: 'UserManual',
+    component: UserManual
   }
 ];
 
